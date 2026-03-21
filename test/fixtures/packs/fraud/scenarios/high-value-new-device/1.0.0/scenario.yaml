@@ -1,0 +1,98 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioVersion
+metadata:
+  pack: fraud
+  scenario: high-value-new-device
+  version: 1.0.0
+  name: High Value Purchase From New Device
+  summary: Fraud Agent, Growth Agent, and Risk Agent discuss a transaction and produce a decision.
+  tags: [fraud, growth, risk, demo]
+spec:
+  inputs:
+    schema:
+      type: object
+      properties:
+        customerId:
+          type: string
+          default: CUST-1001
+        transactionAmount:
+          type: number
+          default: 2400
+          minimum: 1
+        deviceTrustScore:
+          type: number
+          default: 0.18
+          minimum: 0
+          maximum: 1
+        accountAgeDays:
+          type: integer
+          default: 14
+          minimum: 0
+        isVipCustomer:
+          type: boolean
+          default: true
+        priorChargebacks:
+          type: integer
+          default: 1
+          minimum: 0
+      required:
+        - transactionAmount
+        - deviceTrustScore
+        - accountAgeDays
+        - isVipCustomer
+        - priorChargebacks
+
+  launch:
+    modeName: macp.mode.deliberation.v1
+    modeVersion: 1.0.0
+    configurationVersion: 1.0.0
+    ttlMs: 300000
+
+    participants:
+      - id: fraud-agent
+        role: fraud
+        agentRef: fraud-agent
+      - id: growth-agent
+        role: growth
+        agentRef: growth-agent
+      - id: risk-agent
+        role: risk
+        agentRef: risk-agent
+
+    contextTemplate:
+      customerId: "{{ inputs.customerId }}"
+      transactionAmount: "{{ inputs.transactionAmount }}"
+      deviceTrustScore: "{{ inputs.deviceTrustScore }}"
+      accountAgeDays: "{{ inputs.accountAgeDays }}"
+      isVipCustomer: "{{ inputs.isVipCustomer }}"
+      priorChargebacks: "{{ inputs.priorChargebacks }}"
+
+    metadataTemplate:
+      demoType: fraud-decision
+      decisionOwner: risk-agent
+
+    kickoffTemplate:
+      - from: system
+        to: [risk-agent]
+        kind: request
+        payload:
+          objective: Decide whether to approve, step_up, or decline the transaction.
+          process:
+            - Ask fraud-agent for a fraud risk assessment.
+            - Ask growth-agent for customer and revenue impact.
+            - Return the final decision with rationale.
+          outputFormat:
+            decision: one of [approve, step_up, decline]
+            rationale: short explanation
+            signals: array of supporting signals
+
+  outputs:
+    expectedDecisionKinds:
+      - approve
+      - step_up
+      - decline
+    expectedSignals:
+      - suspicious_device
+      - chargeback_history
+      - vip_customer
+      - low_device_trust

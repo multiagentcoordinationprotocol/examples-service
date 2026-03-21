@@ -1,0 +1,10 @@
+services:
+  scenario-registry:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PACKS_DIR: /app/packs
+    volumes:
+      - ./packs:/app/packs:ro

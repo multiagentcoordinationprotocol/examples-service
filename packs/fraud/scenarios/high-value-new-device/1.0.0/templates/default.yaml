@@ -1,0 +1,13 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: fraud/high-value-new-device@1.0.0
+  slug: default
+  name: Default
+spec:
+  defaults:
+    transactionAmount: 2400
+    deviceTrustScore: 0.18
+    accountAgeDays: 14
+    isVipCustomer: true
+    priorChargebacks: 1

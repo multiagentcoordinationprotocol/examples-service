@@ -1,0 +1,20 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: fraud/high-value-new-device@1.0.0
+  slug: strict-risk
+  name: Strict Risk
+spec:
+  defaults:
+    transactionAmount: 2400
+    deviceTrustScore: 0.08
+    accountAgeDays: 7
+    isVipCustomer: true
+    priorChargebacks: 2
+  overrides:
+    launch:
+      ttlMs: 180000
+      metadataTemplate:
+        demoType: fraud-decision
+        decisionOwner: risk-agent
+        posture: strict-risk

@@ -1,0 +1,6 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioPack
+metadata:
+  slug: empty-pack
+  name: Empty Pack
+  description: A pack with no scenarios for testing edge cases

@@ -1,0 +1,7 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioPack
+metadata:
+  slug: fraud
+  name: Fraud
+  description: Fraud and risk decisioning demos
+  tags: [fraud, risk, growth, demo]
