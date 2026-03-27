@@ -10,7 +10,7 @@ describe('HealthController', () => {
   describe('healthz', () => {
     it('should return ok true with service name', () => {
       const result = controller.healthz();
-      expect(result).toEqual({ ok: true, service: 'scenario-registry' });
+      expect(result).toEqual({ ok: true, service: 'macp-example-service' });
     });
   });
 });

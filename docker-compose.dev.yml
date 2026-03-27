@@ -1,5 +1,5 @@
 services:
-  scenario-registry:
+  example-service:
     environment:
       NODE_ENV: development
       REGISTRY_CACHE_TTL_MS: '0'

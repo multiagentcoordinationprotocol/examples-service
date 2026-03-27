@@ -16,6 +16,7 @@ export class RegistryIndexService {
   private readonly logger = new Logger(RegistryIndexService.name);
   private cachedSnapshot: RegistrySnapshot | null = null;
   private cachedAt = 0;
+  private loadingPromise: Promise<RegistrySnapshot> | null = null;
   private readonly cacheTtlMs: number;
 
   constructor(
@@ -30,9 +31,22 @@ export class RegistryIndexService {
     if (this.cachedSnapshot && this.cacheTtlMs > 0 && now - this.cachedAt < this.cacheTtlMs) {
       return this.cachedSnapshot;
     }
-    this.cachedSnapshot = await this.loader.loadAll();
-    this.cachedAt = Date.now();
-    return this.cachedSnapshot;
+
+    if (this.loadingPromise) {
+      return this.loadingPromise;
+    }
+
+    this.loadingPromise = this.loader.loadAll().then((snapshot) => {
+      this.cachedSnapshot = snapshot;
+      this.cachedAt = Date.now();
+      this.loadingPromise = null;
+      return snapshot;
+    }).catch((err) => {
+      this.loadingPromise = null;
+      throw err;
+    });
+
+    return this.loadingPromise;
   }
 
   async getPack(slug: string): Promise<PackEntry> {
@@ -106,6 +120,7 @@ export class RegistryIndexService {
   invalidate(): void {
     this.cachedSnapshot = null;
     this.cachedAt = 0;
+    this.loadingPromise = null;
     this.logger.log('cache invalidated');
   }
 }

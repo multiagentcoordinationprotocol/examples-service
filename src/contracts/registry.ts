@@ -1,3 +1,6 @@
+export type KickoffKind = 'request' | 'broadcast' | 'proposal' | 'context';
+export type PayloadEncoding = 'json' | 'text' | 'base64' | 'proto';
+
 export interface PackFile {
   apiVersion: 'scenarios.macp.dev/v1';
   kind: 'ScenarioPack';
@@ -20,13 +23,39 @@ export interface ParticipantTemplate {
   id: string;
   role: string;
   agentRef: string;
+  displayName?: string;
+  description?: string;
+  transportIdentity?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProtoPayloadTemplate {
+  typeName: string;
+  value: Record<string, unknown>;
+}
+
+export interface PayloadEnvelopeTemplate {
+  encoding: PayloadEncoding;
+  mediaType?: string;
+  json?: Record<string, unknown>;
+  text?: string;
+  base64?: string;
+  proto?: ProtoPayloadTemplate;
 }
 
 export interface KickoffTemplate {
   from: string;
   to: string[];
+  kind: KickoffKind;
+  messageType?: string;
+  payload?: Record<string, unknown>;
+  payloadEnvelope?: PayloadEnvelopeTemplate;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RuntimeSelectionTemplate {
   kind: string;
-  payload: Record<string, unknown>;
+  version?: string;
 }
 
 export interface ScenarioVersionFile {
@@ -42,6 +71,7 @@ export interface ScenarioVersionFile {
     deprecated?: boolean;
   };
   spec: {
+    runtime?: RuntimeSelectionTemplate;
     inputs: {
       schema: Record<string, unknown>;
     };
@@ -49,11 +79,21 @@ export interface ScenarioVersionFile {
       modeName: string;
       modeVersion: string;
       configurationVersion: string;
+      policyVersion?: string;
       ttlMs: number;
+      initiatorParticipantId?: string;
       participants: ParticipantTemplate[];
       contextTemplate?: Record<string, unknown>;
       kickoffTemplate?: KickoffTemplate[];
       metadataTemplate?: Record<string, unknown>;
+    };
+    execution?: {
+      idempotencyKey?: string;
+      tags?: string[];
+      requester?: {
+        actorId?: string;
+        actorType?: 'user' | 'service' | 'system';
+      };
     };
     outputs?: {
       expectedDecisionKinds?: string[];
@@ -73,7 +113,9 @@ export interface ScenarioTemplateFile {
   spec: {
     defaults?: Record<string, unknown>;
     overrides?: {
+      runtime?: Partial<RuntimeSelectionTemplate>;
       launch?: Partial<ScenarioVersionFile['spec']['launch']>;
+      execution?: Partial<ScenarioVersionFile['spec']['execution']>;
     };
   };
 }
@@ -85,6 +127,8 @@ export interface ScenarioSummary {
   versions: string[];
   templates: string[];
   tags?: string[];
+  runtimeKind?: string;
+  agentRefs?: string[];
 }
 
 export interface PackEntry {

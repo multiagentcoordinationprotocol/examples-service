@@ -8,6 +8,10 @@ metadata:
   summary: Fraud Agent, Growth Agent, and Risk Agent discuss a transaction and produce a decision.
   tags: [fraud, growth, risk, demo]
 spec:
+  runtime:
+    kind: rust
+    version: v1
+
   inputs:
     schema:
       type: object
@@ -43,10 +47,12 @@ spec:
         - priorChargebacks
 
   launch:
-    modeName: macp.mode.deliberation.v1
+    modeName: macp.mode.decision.v1
     modeVersion: 1.0.0
-    configurationVersion: 1.0.0
+    configurationVersion: config.default
+    policyVersion: policy.default
     ttlMs: 300000
+    initiatorParticipantId: risk-agent
 
     participants:
       - id: fraud-agent
@@ -70,21 +76,27 @@ spec:
     metadataTemplate:
       demoType: fraud-decision
       decisionOwner: risk-agent
+      intent: evaluate high value transaction from a new device
 
     kickoffTemplate:
-      - from: system
-        to: [risk-agent]
-        kind: request
-        payload:
-          objective: Decide whether to approve, step_up, or decline the transaction.
-          process:
-            - Ask fraud-agent for a fraud risk assessment.
-            - Ask growth-agent for customer and revenue impact.
-            - Return the final decision with rationale.
-          outputFormat:
-            decision: one of [approve, step_up, decline]
-            rationale: short explanation
-            signals: array of supporting signals
+      - from: risk-agent
+        to: [fraud-agent, growth-agent]
+        kind: proposal
+        messageType: Proposal
+        payloadEnvelope:
+          encoding: proto
+          proto:
+            typeName: macp.modes.decision.v1.ProposalPayload
+            value:
+              proposal_id: "{{ inputs.customerId }}-initial-review"
+              option: evaluate_transaction
+              rationale: Decide whether to approve, step_up, or decline the transaction.
+
+  execution:
+    tags: [demo, fraud, examples]
+    requester:
+      actorId: example-service
+      actorType: service
 
   outputs:
     expectedDecisionKinds:

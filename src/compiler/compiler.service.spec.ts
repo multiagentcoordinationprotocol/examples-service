@@ -7,8 +7,9 @@ import { ScenarioVersionFile, ScenarioTemplateFile } from '../contracts/registry
 const mockScenario: ScenarioVersionFile = {
   apiVersion: 'scenarios.macp.dev/v1',
   kind: 'ScenarioVersion',
-  metadata: { pack: 'fraud', scenario: 'test', version: '1.0.0', name: 'Test Scenario' },
+  metadata: { pack: 'fraud', scenario: 'test', version: '1.0.0', name: 'Test Scenario', tags: ['demo'] },
   spec: {
+    runtime: { kind: 'rust', version: 'v1' },
     inputs: {
       schema: {
         type: 'object',
@@ -22,8 +23,10 @@ const mockScenario: ScenarioVersionFile = {
     launch: {
       modeName: 'test.mode',
       modeVersion: '1.0.0',
-      configurationVersion: '1.0.0',
+      configurationVersion: 'config.default',
+      policyVersion: 'policy.default',
       ttlMs: 300000,
+      initiatorParticipantId: 'agent-1',
       participants: [{ id: 'agent-1', role: 'tester', agentRef: 'agent-1' }],
       contextTemplate: {
         amount: '{{ inputs.amount }}',
@@ -33,8 +36,24 @@ const mockScenario: ScenarioVersionFile = {
         demoType: 'test'
       },
       kickoffTemplate: [
-        { from: 'system', to: ['agent-1'], kind: 'request', payload: { goal: 'test' } }
+        {
+          from: 'agent-1',
+          to: ['agent-1'],
+          kind: 'proposal',
+          messageType: 'Proposal',
+          payloadEnvelope: {
+            encoding: 'json',
+            json: { goal: 'test' }
+          }
+        }
       ]
+    },
+    execution: {
+      tags: ['example'],
+      requester: {
+        actorId: 'example-service',
+        actorType: 'service'
+      }
     },
     outputs: { expectedDecisionKinds: ['approve', 'decline'] }
   }
@@ -77,13 +96,19 @@ describe('CompilerService', () => {
       });
 
       expect(result.executionRequest.mode).toBe('sandbox');
-      expect(result.executionRequest.runtime).toEqual({ kind: 'default' });
+      expect(result.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
       expect(result.executionRequest.session.modeName).toBe('test.mode');
+      expect(result.executionRequest.session.policyVersion).toBe('policy.default');
       expect(result.executionRequest.session.ttlMs).toBe(300000);
       expect(result.executionRequest.session.participants).toHaveLength(1);
       expect(result.executionRequest.session.context).toEqual({ amount: 500, isVip: false });
-      expect(result.executionRequest.session.metadata?.source).toBe('scenario-registry');
+      expect(result.executionRequest.session.metadata?.source).toBe('example-service');
       expect(result.executionRequest.kickoff).toHaveLength(1);
+      expect(result.executionRequest.kickoff?.[0].messageType).toBe('Proposal');
+      expect(result.executionRequest.execution?.tags).toEqual(['example', 'fraud', 'test', 'demo']);
+      expect(result.participantBindings).toEqual([
+        { participantId: 'agent-1', role: 'tester', agentRef: 'agent-1' }
+      ]);
       expect(result.display.title).toBe('Test Scenario');
       expect(result.display.expectedDecisionKinds).toEqual(['approve', 'decline']);
     });
@@ -119,7 +144,6 @@ describe('CompilerService', () => {
         inputs: { amount: 999, isVip: false }
       });
 
-      // User input wins over template default (200) and schema default (100)
       expect(result.executionRequest.session.context).toEqual({ amount: 999, isVip: false });
     });
 
@@ -130,7 +154,7 @@ describe('CompilerService', () => {
       const result = await service.compile({
         scenarioRef: 'fraud/test@1.0.0',
         templateId: 'strict',
-        inputs: { isVip: true } // amount not provided, should use template default 200
+        inputs: { isVip: true }
       });
 
       expect(result.executionRequest.session.context).toEqual({ amount: 200, isVip: true });
@@ -141,7 +165,7 @@ describe('CompilerService', () => {
 
       const result = await service.compile({
         scenarioRef: 'fraud/test@1.0.0',
-        inputs: {} // both use schema defaults
+        inputs: {}
       });
 
       expect(result.executionRequest.session.context).toEqual({ amount: 100, isVip: true });
@@ -228,9 +252,9 @@ describe('CompilerService', () => {
         new AppException(ErrorCode.SCENARIO_NOT_FOUND, 'not found', 404)
       );
 
-      await expect(
-        service.compile({ scenarioRef: 'fraud/unknown@1.0.0', inputs: {} })
-      ).rejects.toThrow(AppException);
+      await expect(service.compile({ scenarioRef: 'fraud/unknown@1.0.0', inputs: {} })).rejects.toThrow(
+        AppException
+      );
     });
   });
 

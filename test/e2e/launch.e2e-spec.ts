@@ -23,7 +23,10 @@ describe('Launch (e2e)', () => {
         isDevelopment: true,
         port: 0,
         host: '0.0.0.0',
-        logLevel: 'error'
+        logLevel: 'error',
+        controlPlaneBaseUrl: 'http://localhost:3001',
+        controlPlaneTimeoutMs: 1000,
+        autoBootstrapExampleAgents: true
       })
       .compile();
 
@@ -49,7 +52,10 @@ describe('Launch (e2e)', () => {
           expect(res.body.formSchema).toBeDefined();
           expect(res.body.defaults).toBeDefined();
           expect(res.body.participants).toHaveLength(3);
+          expect(res.body.agents).toHaveLength(3);
+          expect(res.body.runtime).toEqual({ kind: 'rust', version: 'v1' });
           expect(res.body.launchSummary.ttlMs).toBe(300000);
+          expect(res.body.launchSummary.policyVersion).toBe('policy.default');
           expect(res.body.expectedDecisionKinds).toEqual(['approve', 'step_up', 'decline']);
         });
     });
@@ -104,13 +110,16 @@ describe('Launch (e2e)', () => {
         .expect((res: any) => {
           expect(res.body.executionRequest).toBeDefined();
           expect(res.body.executionRequest.mode).toBe('sandbox');
-          expect(res.body.executionRequest.runtime).toEqual({ kind: 'default' });
-          expect(res.body.executionRequest.session.modeName).toBe('macp.mode.deliberation.v1');
+          expect(res.body.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
+          expect(res.body.executionRequest.session.modeName).toBe('macp.mode.decision.v1');
+          expect(res.body.executionRequest.session.policyVersion).toBe('policy.default');
           expect(res.body.executionRequest.session.participants).toHaveLength(3);
           expect(res.body.executionRequest.session.context.transactionAmount).toBe(3200);
           expect(res.body.executionRequest.session.context.isVipCustomer).toBe(true);
-          expect(res.body.executionRequest.session.metadata.source).toBe('scenario-registry');
+          expect(res.body.executionRequest.session.metadata.source).toBe('example-service');
           expect(res.body.executionRequest.kickoff).toHaveLength(1);
+          expect(res.body.executionRequest.kickoff[0].messageType).toBe('Proposal');
+          expect(res.body.participantBindings).toHaveLength(3);
           expect(res.body.display.title).toBe('High Value Purchase From New Device');
         });
     });
@@ -157,6 +166,32 @@ describe('Launch (e2e)', () => {
         .expect(404)
         .expect((res: any) => {
           expect(res.body.errorCode).toBe('SCENARIO_NOT_FOUND');
+        });
+    });
+  });
+
+  describe('POST /examples/run', () => {
+    it('should compile, bootstrap example agents, and skip control plane submission when requested', () => {
+      return request(app.getHttpServer())
+        .post('/examples/run')
+        .send({
+          scenarioRef: 'fraud/high-value-new-device@1.0.0',
+          templateId: 'strict-risk',
+          submitToControlPlane: false,
+          inputs: {
+            transactionAmount: 3200,
+            deviceTrustScore: 0.12,
+            accountAgeDays: 5,
+            isVipCustomer: true,
+            priorChargebacks: 1
+          }
+        })
+        .expect(201)
+        .expect((res: any) => {
+          expect(res.body.compiled.executionRequest).toBeDefined();
+          expect(res.body.hostedAgents).toHaveLength(3);
+          expect(res.body.hostedAgents[0].transportIdentity).toContain('agent://');
+          expect(res.body.controlPlane.submitted).toBe(false);
         });
     });
   });

@@ -31,7 +31,8 @@ export class AppConfigService implements OnModuleInit {
 
   readonly port = readNumber('PORT', 3000);
   readonly host = process.env.HOST ?? '0.0.0.0';
-  readonly corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+  readonly corsOrigins = readStringList('CORS_ORIGIN');
+  readonly corsOrigin: string | string[] = this.corsOrigins.length > 0 ? this.corsOrigins : 'http://localhost:3000';
 
   readonly packsDir = process.env.PACKS_DIR ?? './packs';
   readonly registryCacheTtlMs = readNumber('REGISTRY_CACHE_TTL_MS', 0);
@@ -39,9 +40,15 @@ export class AppConfigService implements OnModuleInit {
   readonly authApiKeys = readStringList('AUTH_API_KEYS');
   readonly logLevel = process.env.LOG_LEVEL ?? 'info';
 
+  readonly controlPlaneBaseUrl = process.env.CONTROL_PLANE_BASE_URL ?? 'http://localhost:3001';
+  readonly controlPlaneApiKey = process.env.CONTROL_PLANE_API_KEY;
+  readonly controlPlaneTimeoutMs = readNumber('CONTROL_PLANE_TIMEOUT_MS', 10000);
+  readonly autoBootstrapExampleAgents = readBoolean('AUTO_BOOTSTRAP_EXAMPLE_AGENTS', true);
+
   onModuleInit(): void {
     this.logger.log(`packs directory: ${this.packsDir}`);
     this.logger.log(`cache TTL: ${this.registryCacheTtlMs}ms`);
+    this.logger.log(`control plane: ${this.controlPlaneBaseUrl}`);
   }
 }
 

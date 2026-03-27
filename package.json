@@ -1,8 +1,8 @@
 {
-  "name": "macp-scenario-registry",
-  "version": "0.1.0",
+  "name": "macp-example-service",
+  "version": "0.2.0",
   "private": true,
-  "description": "File-backed scenario catalog and compiler for the Multi-Agent Coordination Protocol.",
+  "description": "File-backed example showcase service for MACP demos, with scenario compilation and example-agent bootstrap.",
   "license": "Apache-2.0",
   "scripts": {
     "build": "nest build",

@@ -27,9 +27,10 @@ export class CatalogService {
     const scenarios: ScenarioSummary[] = [];
 
     for (const [scenarioSlug, scenarioEntry] of pack.scenarios) {
-      const versions = Array.from(scenarioEntry.versions.keys());
+      const versions = Array.from(scenarioEntry.versions.keys()).sort();
       const latestVersion = scenarioEntry.versions.get(versions[versions.length - 1]);
-      const templates = latestVersion ? Array.from(latestVersion.templates.keys()) : [];
+      const templates = latestVersion ? Array.from(latestVersion.templates.keys()).sort() : [];
+      const participants = latestVersion?.scenario.spec.launch.participants ?? [];
 
       scenarios.push({
         scenario: scenarioSlug,
@@ -37,7 +38,9 @@ export class CatalogService {
         summary: latestVersion?.scenario.metadata.summary,
         versions,
         templates,
-        tags: latestVersion?.scenario.metadata.tags
+        tags: latestVersion?.scenario.metadata.tags,
+        runtimeKind: latestVersion?.scenario.spec.runtime?.kind ?? 'rust',
+        agentRefs: participants.map((participant) => participant.agentRef)
       });
     }
 
