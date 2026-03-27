@@ -1,20 +1,49 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { CatalogService } from './catalog/catalog.service';
+import { CompilerService } from './compiler/compiler.service';
 import { ConfigModule } from './config/config.module';
+import { ControlPlaneClient } from './control-plane/control-plane.client';
 import { CatalogController } from './controllers/catalog.controller';
+import { ExamplesController } from './controllers/examples.controller';
 import { HealthController } from './controllers/health.controller';
 import { LaunchController } from './controllers/launch.controller';
-import { CompilerService } from './launch/compiler.service';
+import { ExampleAgentCatalogService } from './example-agents/example-agent-catalog.service';
+import { EXAMPLE_AGENT_HOST_PROVIDER } from './hosting/example-agent-host.provider';
+import { HostingService } from './hosting/hosting.service';
+import { InMemoryExampleAgentHostProvider } from './hosting/in-memory-example-agent-host.provider';
+import { ExampleRunService } from './launch/example-run.service';
 import { LaunchService } from './launch/launch.service';
+import { ApiKeyGuard } from './middleware/api-key.guard';
 import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { FileRegistryLoader } from './registry/file-registry.loader';
 import { RegistryIndexService } from './registry/registry-index.service';
 
 @Module({
-  imports: [ConfigModule],
-  controllers: [HealthController, CatalogController, LaunchController],
-  providers: [FileRegistryLoader, RegistryIndexService, CatalogService, LaunchService, CompilerService]
+  imports: [
+    ConfigModule,
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])
+  ],
+  controllers: [HealthController, CatalogController, LaunchController, ExamplesController],
+  providers: [
+    FileRegistryLoader,
+    RegistryIndexService,
+    CatalogService,
+    LaunchService,
+    CompilerService,
+    ExampleAgentCatalogService,
+    {
+      provide: EXAMPLE_AGENT_HOST_PROVIDER,
+      useClass: InMemoryExampleAgentHostProvider
+    },
+    HostingService,
+    ControlPlaneClient,
+    ExampleRunService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiKeyGuard }
+  ]
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

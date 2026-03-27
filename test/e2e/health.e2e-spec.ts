@@ -41,7 +41,7 @@ describe('Health (e2e)', () => {
         .expect(200)
         .expect((res: any) => {
           expect(res.body.ok).toBe(true);
-          expect(res.body.service).toBe('scenario-registry');
+          expect(res.body.service).toBe('macp-example-service');
         });
     });
   });

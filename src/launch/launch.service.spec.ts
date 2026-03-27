@@ -1,5 +1,6 @@
 import { LaunchService } from './launch.service';
 import { RegistryIndexService } from '../registry/registry-index.service';
+import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
 import { ScenarioVersionFile, ScenarioTemplateFile } from '../contracts/registry';
 
 const mockScenario: ScenarioVersionFile = {
@@ -7,6 +8,7 @@ const mockScenario: ScenarioVersionFile = {
   kind: 'ScenarioVersion',
   metadata: { pack: 'fraud', scenario: 'test', version: '1.0.0', name: 'Test Scenario' },
   spec: {
+    runtime: { kind: 'rust', version: 'v1' },
     inputs: {
       schema: {
         type: 'object',
@@ -19,9 +21,11 @@ const mockScenario: ScenarioVersionFile = {
     launch: {
       modeName: 'test.mode',
       modeVersion: '1.0.0',
-      configurationVersion: '1.0.0',
+      configurationVersion: 'config.default',
+      policyVersion: 'policy.default',
       ttlMs: 300000,
-      participants: [{ id: 'agent-1', role: 'tester', agentRef: 'agent-1' }]
+      initiatorParticipantId: 'risk-agent',
+      participants: [{ id: 'agent-1', role: 'tester', agentRef: 'fraud-agent' }]
     },
     outputs: { expectedDecisionKinds: ['approve', 'decline'] }
   }
@@ -40,13 +44,28 @@ const mockTemplate: ScenarioTemplateFile = {
 describe('LaunchService', () => {
   let service: LaunchService;
   let mockIndex: jest.Mocked<RegistryIndexService>;
+  let mockAgents: jest.Mocked<ExampleAgentCatalogService>;
 
   beforeEach(() => {
     mockIndex = {
       getScenarioVersion: jest.fn(),
       getTemplate: jest.fn()
     } as unknown as jest.Mocked<RegistryIndexService>;
-    service = new LaunchService(mockIndex);
+    mockAgents = {
+      summarizeParticipants: jest.fn().mockReturnValue([
+        {
+          agentRef: 'fraud-agent',
+          name: 'Fraud Agent',
+          role: 'tester',
+          framework: 'langgraph',
+          transportIdentity: 'agent://fraud-agent',
+          entrypoint: 'fraud.py:create',
+          bootstrapStrategy: 'manifest-only',
+          bootstrapMode: 'deferred'
+        }
+      ])
+    } as unknown as jest.Mocked<ExampleAgentCatalogService>;
+    service = new LaunchService(mockIndex, mockAgents);
   });
 
   describe('getLaunchSchema', () => {
@@ -59,6 +78,9 @@ describe('LaunchService', () => {
       expect(result.formSchema).toBe(mockScenario.spec.inputs.schema);
       expect(result.participants).toHaveLength(1);
       expect(result.launchSummary.ttlMs).toBe(300000);
+      expect(result.launchSummary.policyVersion).toBe('policy.default');
+      expect(result.runtime).toEqual({ kind: 'rust', version: 'v1' });
+      expect(result.agents).toHaveLength(1);
       expect(result.expectedDecisionKinds).toEqual(['approve', 'decline']);
     });
 

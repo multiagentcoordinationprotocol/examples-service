@@ -1,6 +1,6 @@
 import { LaunchController } from './launch.controller';
 import { LaunchService } from '../launch/launch.service';
-import { CompilerService } from '../launch/compiler.service';
+import { CompilerService } from '../compiler/compiler.service';
 
 describe('LaunchController', () => {
   let controller: LaunchController;
@@ -19,8 +19,21 @@ describe('LaunchController', () => {
 
   describe('getLaunchSchema', () => {
     it('should delegate with correct params', async () => {
-      const mockResult = { scenarioRef: 'fraud/test@1.0.0', formSchema: {}, defaults: {}, participants: [], launchSummary: { modeName: 'mode', modeVersion: '1.0.0', configurationVersion: '1.0.0', ttlMs: 300000 } };
-      mockLaunchService.getLaunchSchema.mockResolvedValue(mockResult);
+      const mockResult = {
+        scenarioRef: 'fraud/test@1.0.0',
+        formSchema: {},
+        defaults: {},
+        participants: [],
+        agents: [],
+        runtime: { kind: 'rust', version: 'v1' },
+        launchSummary: {
+          modeName: 'mode',
+          modeVersion: '1.0.0',
+          configurationVersion: 'config.default',
+          ttlMs: 300000
+        }
+      };
+      mockLaunchService.getLaunchSchema.mockResolvedValue(mockResult as never);
 
       const result = await controller.getLaunchSchema('fraud', 'test', '1.0.0', 'default');
       expect(result).toBe(mockResult);
@@ -42,7 +55,11 @@ describe('LaunchController', () => {
   describe('compile', () => {
     it('should delegate body to compiler service', async () => {
       const body = { scenarioRef: 'fraud/test@1.0.0', inputs: { amount: 100 } };
-      const mockResult = { executionRequest: {}, display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' } };
+      const mockResult = {
+        executionRequest: {},
+        display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' },
+        participantBindings: []
+      };
       mockCompilerService.compile.mockResolvedValue(mockResult as never);
 
       const result = await controller.compile(body);

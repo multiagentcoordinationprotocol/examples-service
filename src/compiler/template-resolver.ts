@@ -2,8 +2,8 @@ import { HttpStatus } from '@nestjs/common';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 
-const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
-const EXACT_PLACEHOLDER_RE = /^\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}$/;
+const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_.\-]+)\s*\}\}/g;
+const EXACT_PLACEHOLDER_RE = /^\{\{\s*([a-zA-Z0-9_.\-]+)\s*\}\}$/;
 
 export interface ScenarioRefParts {
   packSlug: string;
@@ -104,10 +104,7 @@ function resolvePath(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
-export function substitute(
-  template: unknown,
-  variables: Record<string, unknown>
-): unknown {
+export function substitute(template: unknown, variables: Record<string, unknown>): unknown {
   if (template === null || template === undefined) {
     return template;
   }

@@ -9,7 +9,7 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import { CompilerService } from '../launch/compiler.service';
+import { CompilerService } from '../compiler/compiler.service';
 import { LaunchService } from '../launch/launch.service';
 import { CompileLaunchResult } from '../contracts/launch';
 import { CompileLaunchRequestDto } from '../dto/compile-launch-request.dto';

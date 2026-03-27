@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { LaunchSchemaResponse } from '../contracts/launch';
 import { RegistryIndexService } from '../registry/registry-index.service';
-import { extractSchemaDefaults, deepMerge } from './template-resolver';
+import { extractSchemaDefaults, deepMerge } from '../compiler/template-resolver';
+import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
 
 @Injectable()
 export class LaunchService {
-  constructor(private readonly registryIndex: RegistryIndexService) {}
+  constructor(
+    private readonly registryIndex: RegistryIndexService,
+    private readonly exampleAgents: ExampleAgentCatalogService
+  ) {}
 
   async getLaunchSchema(
     packSlug: string,
@@ -19,6 +23,7 @@ export class LaunchService {
     const schemaDefaults = extractSchemaDefaults(scenario.spec.inputs.schema);
     let resolvedDefaults = { ...schemaDefaults };
     let launch = scenario.spec.launch;
+    let runtime = scenario.spec.runtime ?? { kind: 'rust', version: 'v1' };
     let templateId: string | undefined;
 
     if (templateSlug) {
@@ -30,6 +35,9 @@ export class LaunchService {
       if (template.spec.overrides?.launch) {
         launch = deepMerge(launch, template.spec.overrides.launch) as typeof launch;
       }
+      if (template.spec.overrides?.runtime) {
+        runtime = { ...runtime, ...template.spec.overrides.runtime };
+      }
     }
 
     return {
@@ -37,16 +45,20 @@ export class LaunchService {
       templateId,
       formSchema: scenario.spec.inputs.schema,
       defaults: resolvedDefaults,
-      participants: launch.participants.map((p) => ({
-        id: p.id,
-        role: p.role,
-        agentRef: p.agentRef
+      participants: launch.participants.map((participant) => ({
+        id: participant.id,
+        role: participant.role,
+        agentRef: participant.agentRef
       })),
+      agents: this.exampleAgents.summarizeParticipants(launch.participants),
+      runtime,
       launchSummary: {
         modeName: launch.modeName,
         modeVersion: launch.modeVersion,
         configurationVersion: launch.configurationVersion,
-        ttlMs: launch.ttlMs
+        policyVersion: launch.policyVersion,
+        ttlMs: launch.ttlMs,
+        initiatorParticipantId: launch.initiatorParticipantId
       },
       expectedDecisionKinds: scenario.spec.outputs?.expectedDecisionKinds
     };

@@ -18,4 +18,10 @@ export class ScenarioSummaryDto {
 
   @ApiPropertyOptional({ example: ['fraud', 'growth', 'risk'] })
   tags?: string[];
+
+  @ApiPropertyOptional({ example: 'rust' })
+  runtimeKind?: string;
+
+  @ApiPropertyOptional({ example: ['fraud-agent', 'growth-agent', 'risk-agent'] })
+  agentRefs?: string[];
 }
