@@ -52,7 +52,7 @@ describe('FileRegistryLoader', () => {
       const fraudPack = snapshot.packs.get('fraud')!;
       const version = fraudPack.scenarios.get('high-value-new-device')!.versions.get('1.0.0')!;
       expect(version.scenario.metadata.name).toBe('High Value Purchase From New Device');
-      expect(version.scenario.spec.launch.participants).toHaveLength(3);
+      expect(version.scenario.spec.launch.participants).toHaveLength(4);
     });
 
     it('should return empty snapshot for non-existent directory', async () => {

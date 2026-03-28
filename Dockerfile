@@ -8,13 +8,16 @@ RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN apk add --no-cache python3 \
+  && addgroup -S appgroup \
+  && adduser -S appuser -G appgroup
 
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist dist/
 COPY packs/ packs/
+COPY agents/ agents/
 
 USER appuser
 ENV NODE_ENV=production

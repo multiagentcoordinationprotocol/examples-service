@@ -34,8 +34,9 @@ src/
   controllers/       → REST endpoints (health, catalog, launch, examples)
   dto/               → Swagger-annotated request/response DTOs
   errors/            → AppException, ErrorCode enum, GlobalExceptionFilter
-  example-agents/    → Hard-coded example agent catalog (fraud, growth, risk)
-  hosting/           → Agent bootstrap orchestration + pluggable host provider
+  example-agents/    → Hard-coded example agent catalog (fraud, growth, compliance, risk)
+    runtime/         → Worker runtime: control-plane client + risk-decider worker
+  hosting/           → Two-phase agent hosting (resolve + attach) + pluggable host providers
   launch/            → Launch schema generation + ExampleRunService (full showcase flow)
   middleware/        → Correlation ID + request logging
   registry/          → File-backed YAML loader + in-memory cache index
@@ -92,11 +93,13 @@ POST /launch/compile
 POST /examples/run
   → ExampleRunService
     1. Compile (same as above)
-    2. Bootstrap agents → HostingService → InMemoryExampleAgentHostProvider
+    2. Resolve agents → HostingService.resolve() → ProcessExampleAgentHostProvider
        → Inject transport identities into ExecutionRequest participants
     3. Submit to control plane (optional)
        → ControlPlaneClient.validate() + .createRun()
-    4. Return compiled + hostedAgents + controlPlane status
+    4. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
+       → Workers poll control plane for events, send MACP messages back
+    5. Return compiled + hostedAgents + controlPlane status
 ```
 
 ## Data Flow: Scenario Packs
@@ -119,14 +122,15 @@ schema defaults < template defaults < user inputs
 
 ## Agent Hosting Strategy
 
-The example agents (fraud-agent, growth-agent, risk-agent) use a **manifest-only** bootstrap strategy:
+The example agents use an **active process-backed** hosting strategy:
 
-- No actual framework runtime is required
-- The service resolves agent definitions from a hard-coded catalog
-- Transport identities are injected into the ExecutionRequest
-- Framework entrypoints are recorded as metadata
-
-This is intentionally deferred — plug in a real LangGraph/LangChain/custom host provider when ready.
+- Service resolves agent definitions from a hard-coded catalog (fraud, growth, compliance, risk)
+- Transport identities are injected into the ExecutionRequest before submission
+- After the control plane creates a run, lightweight Python and Node worker processes are spawned
+- Workers poll the control plane for run state and events (`GET /runs/:id/events`)
+- Workers send session-bound MACP messages back via `POST /runs/:id/messages`
+- Each framework is demonstrated: LangGraph (fraud), LangChain (growth), CrewAI (compliance), custom (risk)
+- The `InMemoryExampleAgentHostProvider` is available as a manifest-only fallback for environments without Python
 
 ## Caching
 

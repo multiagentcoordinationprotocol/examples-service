@@ -4,6 +4,8 @@ import { ParticipantTemplate } from '../contracts/registry';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 
+const FRAUD_SCENARIO = 'fraud/high-value-new-device@1.0.0';
+
 const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
   {
     agentRef: 'fraud-agent',
@@ -11,14 +13,16 @@ const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
     role: 'fraud',
     description: 'Evaluates device, chargeback, and identity-risk signals for the showcase flow.',
     framework: 'langgraph',
+    supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
-      strategy: 'manifest-only',
-      entrypoint: 'examples/fraud/langgraph_fraud_agent.py:create_graph',
+      strategy: 'external',
+      entrypoint: 'agents/python/langgraph_fraud_agent.py',
       transportIdentity: 'agent://fraud-agent',
-      mode: 'deferred',
+      mode: 'attached',
+      launcher: 'python',
       notes: [
-        'Intended to be backed by a LangGraph specialist graph.',
-        'OSS implementation exposes the manifest and transport identity; plug in a concrete host when ready.'
+        'Backed by an active Python worker process that participates in the runtime session.',
+        'Swap the worker implementation for a real LangGraph graph when you are ready to host framework-native agents.'
       ]
     },
     tags: ['fraud', 'langgraph', 'risk']
@@ -29,32 +33,56 @@ const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
     role: 'growth',
     description: 'Assesses customer value, revenue impact, and experience trade-offs.',
     framework: 'langchain',
+    supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
-      strategy: 'manifest-only',
-      entrypoint: 'examples/growth/langchain_growth_agent.py:create_agent',
+      strategy: 'external',
+      entrypoint: 'agents/python/langchain_growth_agent.py',
       transportIdentity: 'agent://growth-agent',
-      mode: 'deferred',
+      mode: 'attached',
+      launcher: 'python',
       notes: [
-        'Intended to be backed by a LangChain agent or chain.',
-        'Example service resolves the binding and transport identity for the control plane run.'
+        'Runs as an active Python host process with a LangChain-oriented manifest and control-plane loop.',
+        'The transport contract stays stable even if you later replace the shim with a real chain or tool-calling agent.'
       ]
     },
     tags: ['growth', 'langchain', 'revenue']
   },
   {
+    agentRef: 'compliance-agent',
+    name: 'Compliance Agent',
+    role: 'compliance',
+    description: 'Applies onboarding, policy, and KYC/AML checks before the coordinator finalizes the decision.',
+    framework: 'crewai',
+    supportedScenarioRefs: [FRAUD_SCENARIO],
+    bootstrap: {
+      strategy: 'external',
+      entrypoint: 'agents/python/crewai_compliance_agent.py',
+      transportIdentity: 'agent://compliance-agent',
+      mode: 'attached',
+      launcher: 'python',
+      notes: [
+        'Demonstrates a CrewAI-style specialist that can raise objections or send evaluations into the same MACP session.',
+        'The OSS worker keeps dependencies light while preserving the extension point for a real crew.'
+      ]
+    },
+    tags: ['compliance', 'crewai', 'policy']
+  },
+  {
     agentRef: 'risk-agent',
     name: 'Risk Agent',
     role: 'risk',
-    description: 'Coordinates the final recommendation and turns specialist input into a decision.',
+    description: 'Coordinates the final recommendation and turns specialist input into a terminal commitment.',
     framework: 'custom',
+    supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
-      strategy: 'manifest-only',
-      entrypoint: 'examples/risk/risk_decider.ts:createCoordinator',
+      strategy: 'external',
+      entrypoint: 'src/example-agents/runtime/risk-decider.worker.ts',
       transportIdentity: 'agent://risk-agent',
-      mode: 'deferred',
+      mode: 'attached',
+      launcher: 'node',
       notes: [
-        'Acts as the decision owner for the showcase session.',
-        'You can later back this with a custom TypeScript host, LangGraph workflow, or another framework.'
+        'Acts as the decision owner for the showcase session and actively joins the runtime via the control plane.',
+        'Because it is process-backed, you can replace it with another coordinator implementation without changing the scenario contract.'
       ]
     },
     tags: ['risk', 'coordinator', 'decision']

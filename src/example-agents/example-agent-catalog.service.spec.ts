@@ -11,19 +11,22 @@ describe('ExampleAgentCatalogService', () => {
   it('returns built-in example agents', () => {
     const agents = service.list();
     expect(agents.map((agent) => agent.agentRef)).toEqual(
-      expect.arrayContaining(['fraud-agent', 'growth-agent', 'risk-agent'])
+      expect.arrayContaining(['fraud-agent', 'growth-agent', 'compliance-agent', 'risk-agent'])
     );
+    expect(agents).toHaveLength(4);
   });
 
   it('summarizes participants for the launch schema', () => {
     const summary = service.summarizeParticipants([
       { id: 'fraud-agent', role: 'fraud', agentRef: 'fraud-agent' },
-      { id: 'growth-agent', role: 'growth', agentRef: 'growth-agent' }
+      { id: 'growth-agent', role: 'growth', agentRef: 'growth-agent' },
+      { id: 'compliance-agent', role: 'compliance', agentRef: 'compliance-agent' }
     ]);
 
-    expect(summary).toHaveLength(2);
+    expect(summary).toHaveLength(3);
     expect(summary[0].framework).toBe('langgraph');
     expect(summary[1].framework).toBe('langchain');
+    expect(summary[2].framework).toBe('crewai');
   });
 
   it('throws when an example agent is missing', () => {
