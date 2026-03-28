@@ -1,4 +1,4 @@
-export type ExampleAgentFramework = 'langgraph' | 'langchain' | 'custom' | 'mock';
+export type ExampleAgentFramework = 'langgraph' | 'langchain' | 'crewai' | 'custom' | 'mock';
 
 export type ExampleAgentBootstrapStrategy = 'in-process' | 'external' | 'container' | 'manifest-only';
 
@@ -14,6 +14,8 @@ export interface ExampleAgentDefinition {
     entrypoint: string;
     transportIdentity: string;
     mode: 'mock' | 'deferred' | 'attached';
+    launcher?: 'node' | 'python';
+    args?: string[];
     env?: Record<string, string>;
     notes?: string[];
   };
@@ -45,4 +47,18 @@ export interface ParticipantAgentBinding {
   participantId: string;
   role: string;
   agentRef: string;
+}
+
+export interface ExampleAgentRunContext {
+  runId: string;
+  traceId?: string;
+  scenarioRef: string;
+  modeName: string;
+  modeVersion: string;
+  configurationVersion: string;
+  policyVersion?: string;
+  ttlMs: number;
+  sessionContext?: Record<string, unknown>;
+  participants: string[];
+  initiatorParticipantId?: string;
 }

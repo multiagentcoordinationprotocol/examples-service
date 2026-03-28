@@ -88,9 +88,9 @@ Get the launch form schema, defaults, agent previews, and runtime hints.
       "role": "fraud",
       "framework": "langgraph",
       "transportIdentity": "agent://fraud-agent",
-      "entrypoint": "examples/fraud/langgraph_fraud_agent.py:create_graph",
-      "bootstrapStrategy": "manifest-only",
-      "bootstrapMode": "deferred"
+      "entrypoint": "agents/python/langgraph_fraud_agent.py",
+      "bootstrapStrategy": "external",
+      "bootstrapMode": "attached"
     }
   ],
   "runtime": { "kind": "rust", "version": "v1" },
@@ -176,9 +176,9 @@ Full showcase flow: compile scenario, bootstrap example agents, and optionally s
       "role": "fraud",
       "framework": "langgraph",
       "transportIdentity": "agent://fraud-agent",
-      "entrypoint": "examples/fraud/langgraph_fraud_agent.py:create_graph",
-      "bootstrapStrategy": "manifest-only",
-      "bootstrapMode": "deferred",
+      "entrypoint": "agents/python/langgraph_fraud_agent.py",
+      "bootstrapStrategy": "external",
+      "bootstrapMode": "attached",
       "status": "bootstrapped"
     }
   ],

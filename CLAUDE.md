@@ -33,9 +33,9 @@ Docker: `docker compose -f docker-compose.dev.yml up` for local dev with hot rel
 - **Registry** (`src/registry/`) — `FileRegistryLoader` discovers and parses YAML pack files from `PACKS_DIR`. `RegistryIndexService` caches the loaded index with configurable TTL (`REGISTRY_CACHE_TTL_MS`, 0 = reload every request).
 - **Catalog** (`src/catalog/`) — Read-only endpoints to browse packs and scenarios with agent refs and runtime info.
 - **Compiler** (`src/compiler/`) — `CompilerService` validates inputs against JSON Schema (ajv), `template-resolver` handles `{{ inputs.* }}` substitution, default merging (`deepMerge`), and `parseScenarioRef`.
-- **Launch** (`src/launch/`) — `LaunchService` generates launch schemas with agent previews. `ExampleRunService` orchestrates the full showcase flow (compile → bootstrap → submit).
-- **Example Agents** (`src/example-agents/`) — Hard-coded catalog of three demo agents (fraud, growth, risk) with framework metadata and transport identities.
-- **Hosting** (`src/hosting/`) — `HostingService` bootstraps agents via pluggable `ExampleAgentHostProvider` (injection token `EXAMPLE_AGENT_HOST_PROVIDER`). `InMemoryExampleAgentHostProvider` is the default manifest-only implementation. Swap it in `AppModule` to wire a real LangGraph/LangChain host.
+- **Launch** (`src/launch/`) — `LaunchService` generates launch schemas with agent previews. `ExampleRunService` orchestrates the full showcase flow (compile → resolve agents → submit → attach workers).
+- **Example Agents** (`src/example-agents/`) — Hard-coded catalog of four demo agents (fraud/LangGraph, growth/LangChain, compliance/CrewAI, risk/custom) with active process-backed hosting. Worker runtime utilities in `src/example-agents/runtime/`.
+- **Hosting** (`src/hosting/`) — Two-phase hosting via `HostingService.resolve()` (pre-submission metadata) and `HostingService.attach()` (post-submission process spawning). `ProcessExampleAgentHostProvider` spawns Python/Node worker processes. `InMemoryExampleAgentHostProvider` available as a manifest-only fallback.
 - **Control Plane** (`src/control-plane/`) — HTTP client for `/runs/validate` and `/runs` on the control plane.
 - **Config** (`src/config/`) — `AppConfigService` is a global module wrapping environment variables including control plane settings.
 - **Contracts** (`src/contracts/`) — TypeScript interfaces for registry types, launch payloads, and example agent definitions.

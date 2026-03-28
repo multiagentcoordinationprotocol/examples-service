@@ -44,6 +44,8 @@ export class AppConfigService implements OnModuleInit {
   readonly controlPlaneApiKey = process.env.CONTROL_PLANE_API_KEY;
   readonly controlPlaneTimeoutMs = readNumber('CONTROL_PLANE_TIMEOUT_MS', 10000);
   readonly autoBootstrapExampleAgents = readBoolean('AUTO_BOOTSTRAP_EXAMPLE_AGENTS', true);
+  readonly exampleAgentPythonPath = process.env.EXAMPLE_AGENT_PYTHON_PATH ?? 'python3';
+  readonly exampleAgentNodePath = process.env.EXAMPLE_AGENT_NODE_PATH ?? process.execPath;
 
   onModuleInit(): void {
     this.logger.log(`packs directory: ${this.packsDir}`);

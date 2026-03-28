@@ -84,15 +84,16 @@ See [docs/architecture.md](docs/architecture.md) for the full module structure a
 
 ## Example Agents
 
-Three demo agents are included:
+Four demo agents are included:
 
 | Agent | Framework | Role |
 |-------|-----------|------|
 | Fraud Agent | LangGraph | Evaluates device, chargeback, and identity-risk signals |
 | Growth Agent | LangChain | Assesses customer value and revenue impact |
+| Compliance Agent | CrewAI | Applies KYC/AML policy checks |
 | Risk Agent | Custom | Coordinates the final recommendation |
 
-All agents use a **manifest-only** bootstrap strategy — no actual framework runtime is required. Transport identities and entrypoints are resolved and injected into the ExecutionRequest for the control plane.
+All agents use an **active process-backed** hosting strategy. Python and Node.js worker processes are spawned after the control plane creates a run, poll for events, and send MACP messages back through the control plane. Transport identities and entrypoints are resolved and injected into the ExecutionRequest before submission.
 
 ## Creating Scenario Packs
 

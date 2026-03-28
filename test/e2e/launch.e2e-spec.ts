@@ -26,7 +26,9 @@ describe('Launch (e2e)', () => {
         logLevel: 'error',
         controlPlaneBaseUrl: 'http://localhost:3001',
         controlPlaneTimeoutMs: 1000,
-        autoBootstrapExampleAgents: true
+        autoBootstrapExampleAgents: true,
+        exampleAgentPythonPath: 'python3',
+        exampleAgentNodePath: process.execPath
       })
       .compile();
 
@@ -51,8 +53,8 @@ describe('Launch (e2e)', () => {
           expect(res.body.scenarioRef).toBe('fraud/high-value-new-device@1.0.0');
           expect(res.body.formSchema).toBeDefined();
           expect(res.body.defaults).toBeDefined();
-          expect(res.body.participants).toHaveLength(3);
-          expect(res.body.agents).toHaveLength(3);
+          expect(res.body.participants).toHaveLength(4);
+          expect(res.body.agents).toHaveLength(4);
           expect(res.body.runtime).toEqual({ kind: 'rust', version: 'v1' });
           expect(res.body.launchSummary.ttlMs).toBe(300000);
           expect(res.body.launchSummary.policyVersion).toBe('policy.default');
@@ -113,13 +115,13 @@ describe('Launch (e2e)', () => {
           expect(res.body.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
           expect(res.body.executionRequest.session.modeName).toBe('macp.mode.decision.v1');
           expect(res.body.executionRequest.session.policyVersion).toBe('policy.default');
-          expect(res.body.executionRequest.session.participants).toHaveLength(3);
+          expect(res.body.executionRequest.session.participants).toHaveLength(4);
           expect(res.body.executionRequest.session.context.transactionAmount).toBe(3200);
           expect(res.body.executionRequest.session.context.isVipCustomer).toBe(true);
           expect(res.body.executionRequest.session.metadata.source).toBe('example-service');
           expect(res.body.executionRequest.kickoff).toHaveLength(1);
           expect(res.body.executionRequest.kickoff[0].messageType).toBe('Proposal');
-          expect(res.body.participantBindings).toHaveLength(3);
+          expect(res.body.participantBindings).toHaveLength(4);
           expect(res.body.display.title).toBe('High Value Purchase From New Device');
         });
     });
@@ -189,8 +191,9 @@ describe('Launch (e2e)', () => {
         .expect(201)
         .expect((res: any) => {
           expect(res.body.compiled.executionRequest).toBeDefined();
-          expect(res.body.hostedAgents).toHaveLength(3);
+          expect(res.body.hostedAgents).toHaveLength(4);
           expect(res.body.hostedAgents[0].transportIdentity).toContain('agent://');
+          expect(res.body.hostedAgents[2].framework).toBe('crewai');
           expect(res.body.controlPlane.submitted).toBe(false);
         });
     });

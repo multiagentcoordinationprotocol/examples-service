@@ -17,12 +17,12 @@ export class ExampleRunService {
   async run(request: RunExampleRequest): Promise<RunExampleResult> {
     const compiled = await this.compiler.compile(request);
     const shouldBootstrap = request.bootstrapAgents ?? this.config.autoBootstrapExampleAgents;
-    const hostedAgents = shouldBootstrap ? await this.hosting.bootstrap(compiled) : [];
+    const resolvedAgents = shouldBootstrap ? await this.hosting.resolve(compiled) : [];
 
     if (request.submitToControlPlane === false) {
       return {
         compiled,
-        hostedAgents,
+        hostedAgents: resolvedAgents,
         controlPlane: {
           baseUrl: this.controlPlaneClient.baseUrl,
           validated: false,
@@ -33,6 +33,22 @@ export class ExampleRunService {
 
     await this.controlPlaneClient.validate(compiled.executionRequest);
     const launched = await this.controlPlaneClient.createRun(compiled.executionRequest);
+
+    const hostedAgents = shouldBootstrap
+      ? await this.hosting.attach(compiled, {
+          runId: launched.runId,
+          traceId: launched.traceId,
+          scenarioRef: compiled.display.scenarioRef,
+          modeName: compiled.executionRequest.session.modeName,
+          modeVersion: compiled.executionRequest.session.modeVersion,
+          configurationVersion: compiled.executionRequest.session.configurationVersion,
+          policyVersion: compiled.executionRequest.session.policyVersion,
+          ttlMs: compiled.executionRequest.session.ttlMs,
+          sessionContext: compiled.executionRequest.session.context,
+          participants: compiled.executionRequest.session.participants.map((participant) => participant.id),
+          initiatorParticipantId: compiled.executionRequest.session.initiatorParticipantId
+        })
+      : [];
 
     return {
       compiled,

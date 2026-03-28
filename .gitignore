@@ -32,6 +32,10 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 
+# Python
+__pycache__/
+*.pyc
+
 # Misc
 tmp/
 temp/

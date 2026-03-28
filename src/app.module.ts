@@ -12,7 +12,7 @@ import { LaunchController } from './controllers/launch.controller';
 import { ExampleAgentCatalogService } from './example-agents/example-agent-catalog.service';
 import { EXAMPLE_AGENT_HOST_PROVIDER } from './hosting/example-agent-host.provider';
 import { HostingService } from './hosting/hosting.service';
-import { InMemoryExampleAgentHostProvider } from './hosting/in-memory-example-agent-host.provider';
+import { ProcessExampleAgentHostProvider } from './hosting/process-example-agent-host.provider';
 import { ExampleRunService } from './launch/example-run.service';
 import { LaunchService } from './launch/launch.service';
 import { ApiKeyGuard } from './middleware/api-key.guard';
@@ -34,9 +34,10 @@ import { RegistryIndexService } from './registry/registry-index.service';
     LaunchService,
     CompilerService,
     ExampleAgentCatalogService,
+    ProcessExampleAgentHostProvider,
     {
       provide: EXAMPLE_AGENT_HOST_PROVIDER,
-      useClass: InMemoryExampleAgentHostProvider
+      useExisting: ProcessExampleAgentHostProvider
     },
     HostingService,
     ControlPlaneClient,

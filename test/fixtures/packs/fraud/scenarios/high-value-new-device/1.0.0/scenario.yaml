@@ -5,8 +5,8 @@ metadata:
   scenario: high-value-new-device
   version: 1.0.0
   name: High Value Purchase From New Device
-  summary: Fraud Agent, Growth Agent, and Risk Agent discuss a transaction and produce a decision.
-  tags: [fraud, growth, risk, demo]
+  summary: Fraud, Growth, Compliance, and Risk agents discuss a transaction and produce a decision.
+  tags: [fraud, growth, compliance, risk, demo]
 spec:
   runtime:
     kind: rust
@@ -61,6 +61,9 @@ spec:
       - id: growth-agent
         role: growth
         agentRef: growth-agent
+      - id: compliance-agent
+        role: compliance
+        agentRef: compliance-agent
       - id: risk-agent
         role: risk
         agentRef: risk-agent
@@ -76,11 +79,15 @@ spec:
     metadataTemplate:
       demoType: fraud-decision
       decisionOwner: risk-agent
+      specialists:
+        - fraud-agent
+        - growth-agent
+        - compliance-agent
       intent: evaluate high value transaction from a new device
 
     kickoffTemplate:
       - from: risk-agent
-        to: [fraud-agent, growth-agent]
+        to: [fraud-agent, growth-agent, compliance-agent]
         kind: proposal
         messageType: Proposal
         payloadEnvelope:

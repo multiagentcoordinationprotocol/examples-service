@@ -23,6 +23,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install dependencies
         run: npm ci
 
@@ -40,3 +45,6 @@ jobs:
 
       - name: E2E tests
         run: npm run test:e2e
+
+      - name: Validate Python workers
+        run: python3 -m py_compile agents/python/worker_common.py && python3 -m py_compile agents/python/langgraph_fraud_agent.py && python3 -m py_compile agents/python/langchain_growth_agent.py && python3 -m py_compile agents/python/crewai_compliance_agent.py
