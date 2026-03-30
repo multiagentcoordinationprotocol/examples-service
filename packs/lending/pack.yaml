@@ -1,0 +1,7 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioPack
+metadata:
+  slug: lending
+  name: Lending
+  description: Loan underwriting and credit decisioning demos
+  tags: [lending, credit, underwriting, demo]

@@ -1,70 +1,88 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus, Logger } from '@nestjs/common';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { ExampleAgentDefinition, ExampleAgentSummary } from '../contracts/example-agents';
 import { ParticipantTemplate } from '../contracts/registry';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
+import { AgentManifest } from '../hosting/contracts/manifest.types';
 
 const FRAUD_SCENARIO = 'fraud/high-value-new-device@1.0.0';
+
+function loadManifest(relativePath: string): AgentManifest | undefined {
+  const absolutePath = path.resolve(process.cwd(), relativePath);
+  try {
+    if (fs.existsSync(absolutePath)) {
+      return JSON.parse(fs.readFileSync(absolutePath, 'utf-8')) as AgentManifest;
+    }
+  } catch {
+    // manifest loading is optional; fall back to legacy mode
+  }
+  return undefined;
+}
 
 const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
   {
     agentRef: 'fraud-agent',
     name: 'Fraud Agent',
     role: 'fraud',
-    description: 'Evaluates device, chargeback, and identity-risk signals for the showcase flow.',
+    description: 'Evaluates device, chargeback, and identity-risk signals using a LangGraph graph.',
     framework: 'langgraph',
     supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
       strategy: 'external',
-      entrypoint: 'agents/python/langgraph_fraud_agent.py',
+      entrypoint: 'agents/langgraph_worker/main.py',
       transportIdentity: 'agent://fraud-agent',
       mode: 'attached',
       launcher: 'python',
       notes: [
-        'Backed by an active Python worker process that participates in the runtime session.',
-        'Swap the worker implementation for a real LangGraph graph when you are ready to host framework-native agents.'
+        'Backed by a real LangGraph graph that evaluates device trust and chargeback signals.',
+        'Falls back gracefully when langgraph is not installed.'
       ]
     },
+    manifest: loadManifest('agents/manifests/fraud-agent.json'),
     tags: ['fraud', 'langgraph', 'risk']
   },
   {
     agentRef: 'growth-agent',
     name: 'Growth Agent',
     role: 'growth',
-    description: 'Assesses customer value, revenue impact, and experience trade-offs.',
+    description: 'Assesses customer value, revenue impact, and experience trade-offs using a LangChain chain.',
     framework: 'langchain',
     supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
       strategy: 'external',
-      entrypoint: 'agents/python/langchain_growth_agent.py',
+      entrypoint: 'agents/langchain_worker/main.py',
       transportIdentity: 'agent://growth-agent',
       mode: 'attached',
       launcher: 'python',
       notes: [
-        'Runs as an active Python host process with a LangChain-oriented manifest and control-plane loop.',
-        'The transport contract stays stable even if you later replace the shim with a real chain or tool-calling agent.'
+        'Runs a LangChain chain that analyzes growth impact factors.',
+        'Falls back gracefully when langchain is not installed.'
       ]
     },
+    manifest: loadManifest('agents/manifests/growth-agent.json'),
     tags: ['growth', 'langchain', 'revenue']
   },
   {
     agentRef: 'compliance-agent',
     name: 'Compliance Agent',
     role: 'compliance',
-    description: 'Applies onboarding, policy, and KYC/AML checks before the coordinator finalizes the decision.',
+    description: 'Applies onboarding, policy, and KYC/AML checks using a CrewAI crew.',
     framework: 'crewai',
     supportedScenarioRefs: [FRAUD_SCENARIO],
     bootstrap: {
       strategy: 'external',
-      entrypoint: 'agents/python/crewai_compliance_agent.py',
+      entrypoint: 'agents/crewai_worker/main.py',
       transportIdentity: 'agent://compliance-agent',
       mode: 'attached',
       launcher: 'python',
       notes: [
-        'Demonstrates a CrewAI-style specialist that can raise objections or send evaluations into the same MACP session.',
-        'The OSS worker keeps dependencies light while preserving the extension point for a real crew.'
+        'Demonstrates a CrewAI-style specialist that can raise objections or send evaluations.',
+        'Falls back gracefully when crewai is not installed.'
       ]
     },
+    manifest: loadManifest('agents/manifests/compliance-agent.json'),
     tags: ['compliance', 'crewai', 'policy']
   },
   {
@@ -82,18 +100,27 @@ const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
       launcher: 'node',
       notes: [
         'Acts as the decision owner for the showcase session and actively joins the runtime via the control plane.',
-        'Because it is process-backed, you can replace it with another coordinator implementation without changing the scenario contract.'
+        'Uses the custom framework adapter for Node.js-based coordinators.'
       ]
     },
+    manifest: loadManifest('agents/manifests/risk-agent.json'),
     tags: ['risk', 'coordinator', 'decision']
   }
 ];
 
 @Injectable()
 export class ExampleAgentCatalogService {
+  private readonly logger = new Logger(ExampleAgentCatalogService.name);
   private readonly definitions = new Map<string, ExampleAgentDefinition>(
     EXAMPLE_AGENT_DEFINITIONS.map((definition) => [definition.agentRef, definition])
   );
+
+  constructor() {
+    const manifested = EXAMPLE_AGENT_DEFINITIONS.filter((d) => d.manifest).length;
+    this.logger.log(
+      `loaded ${EXAMPLE_AGENT_DEFINITIONS.length} agent definitions (${manifested} with manifests)`
+    );
+  }
 
   list(): ExampleAgentDefinition[] {
     return Array.from(this.definitions.values());

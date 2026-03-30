@@ -13,6 +13,9 @@ import { ExampleAgentCatalogService } from './example-agents/example-agent-catal
 import { EXAMPLE_AGENT_HOST_PROVIDER } from './hosting/example-agent-host.provider';
 import { HostingService } from './hosting/hosting.service';
 import { ProcessExampleAgentHostProvider } from './hosting/process-example-agent-host.provider';
+import { HostAdapterRegistry } from './hosting/host-adapter-registry';
+import { LaunchSupervisor } from './hosting/launch-supervisor';
+import { ManifestValidator } from './hosting/manifest-validator';
 import { ExampleRunService } from './launch/example-run.service';
 import { LaunchService } from './launch/launch.service';
 import { ApiKeyGuard } from './middleware/api-key.guard';
@@ -34,6 +37,9 @@ import { RegistryIndexService } from './registry/registry-index.service';
     LaunchService,
     CompilerService,
     ExampleAgentCatalogService,
+    HostAdapterRegistry,
+    LaunchSupervisor,
+    ManifestValidator,
     ProcessExampleAgentHostProvider,
     {
       provide: EXAMPLE_AGENT_HOST_PROVIDER,

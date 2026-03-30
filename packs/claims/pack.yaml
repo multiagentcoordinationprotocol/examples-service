@@ -1,0 +1,7 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioPack
+metadata:
+  slug: claims
+  name: Claims
+  description: Insurance claims review and adjudication demos
+  tags: [claims, insurance, review, demo]

@@ -35,6 +35,8 @@ yarn-error.log*
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
+.venv/
 
 # Misc
 tmp/
@@ -42,3 +44,6 @@ temp/
 
 # Plans
 plans/
+
+.claude/
+CLAUDE.md

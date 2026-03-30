@@ -1,5 +1,16 @@
 services:
   example-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./packs:/app/packs
+      - ./agents:/app/agents
     environment:
       NODE_ENV: development
       REGISTRY_CACHE_TTL_MS: '0'
+      CONTROL_PLANE_BASE_URL: 'http://host.docker.internal:3001'
+      AUTO_BOOTSTRAP_EXAMPLE_AGENTS: 'true'
+      EXAMPLE_AGENT_PYTHON_PATH: python3

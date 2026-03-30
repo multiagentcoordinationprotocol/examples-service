@@ -1,3 +1,5 @@
+import { AgentManifest } from '../hosting/contracts/manifest.types';
+
 export type ExampleAgentFramework = 'langgraph' | 'langchain' | 'crewai' | 'custom' | 'mock';
 
 export type ExampleAgentBootstrapStrategy = 'in-process' | 'external' | 'container' | 'manifest-only';
@@ -19,6 +21,7 @@ export interface ExampleAgentDefinition {
     env?: Record<string, string>;
     notes?: string[];
   };
+  manifest?: AgentManifest;
   metadata?: Record<string, unknown>;
   tags?: string[];
 }
