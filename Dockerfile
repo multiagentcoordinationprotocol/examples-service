@@ -8,7 +8,7 @@ RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache python3 \
+RUN apk add --no-cache python3 py3-pip \
   && addgroup -S appgroup \
   && adduser -S appuser -G appgroup
 

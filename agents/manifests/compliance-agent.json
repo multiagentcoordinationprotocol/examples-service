@@ -1,0 +1,28 @@
+{
+  "id": "compliance-agent",
+  "name": "Compliance Agent",
+  "framework": "crewai",
+  "version": "1.0.0",
+  "entrypoint": {
+    "type": "python_file",
+    "value": "agents/crewai_worker/main.py"
+  },
+  "host": {
+    "python": "python3",
+    "cwd": ".",
+    "env": {
+      "PYTHONUNBUFFERED": "1"
+    },
+    "startupTimeoutMs": 45000
+  },
+  "macp": {
+    "role": "compliance",
+    "supportedMessageTypes": ["Evaluation", "Objection"],
+    "capabilities": ["compliance-review", "kyc-aml-checks"]
+  },
+  "frameworkConfig": {
+    "crewFactory": "build_crew",
+    "inputMapper": "map_kickoff_to_crew_inputs",
+    "outputMapper": "map_crew_result_to_macp_messages"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "fraud-agent",
+  "name": "Fraud Agent",
+  "framework": "langgraph",
+  "version": "1.0.0",
+  "entrypoint": {
+    "type": "python_file",
+    "value": "agents/langgraph_worker/main.py"
+  },
+  "host": {
+    "python": "python3",
+    "cwd": ".",
+    "env": {
+      "PYTHONUNBUFFERED": "1"
+    },
+    "startupTimeoutMs": 30000
+  },
+  "macp": {
+    "role": "evaluator",
+    "supportedMessageTypes": ["Evaluation"],
+    "capabilities": ["fraud-analysis", "device-trust-evaluation"]
+  },
+  "frameworkConfig": {
+    "graphFactory": "build_graph",
+    "inputMapper": "map_kickoff_to_state",
+    "outputMapper": "map_state_to_macp_messages"
+  }
+}

@@ -1,0 +1,13 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: claims/auto-claim-review@1.0.0
+  slug: default
+  name: Default
+spec:
+  defaults:
+    claimAmount: 8500
+    policyAge: 24
+    priorClaims: 1
+    isHighValuePolicy: false
+    incidentSeverity: moderate

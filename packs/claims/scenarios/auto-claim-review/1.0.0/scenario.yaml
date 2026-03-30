@@ -1,0 +1,121 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioVersion
+metadata:
+  pack: claims
+  scenario: auto-claim-review
+  version: 1.0.0
+  name: Auto Claim Review
+  summary: Claims validation, fraud investigation, compliance review, and customer advocacy agents collaborate on an auto insurance claim.
+  tags: [claims, insurance, fraud, compliance, demo, mixed-framework]
+spec:
+  runtime:
+    kind: rust
+    version: v1
+
+  inputs:
+    schema:
+      type: object
+      properties:
+        claimId:
+          type: string
+          default: CLM-3001
+        claimAmount:
+          type: number
+          default: 8500
+          minimum: 100
+        policyAge:
+          type: integer
+          default: 24
+          minimum: 0
+        priorClaims:
+          type: integer
+          default: 1
+          minimum: 0
+        isHighValuePolicy:
+          type: boolean
+          default: false
+        incidentSeverity:
+          type: string
+          default: moderate
+          enum: [minor, moderate, severe, total_loss]
+      required:
+        - claimAmount
+        - policyAge
+        - priorClaims
+        - isHighValuePolicy
+        - incidentSeverity
+
+  launch:
+    modeName: macp.mode.decision.v1
+    modeVersion: 1.0.0
+    configurationVersion: config.default
+    policyVersion: policy.claims
+    ttlMs: 300000
+    initiatorParticipantId: risk-agent
+
+    participants:
+      - id: fraud-agent
+        role: claims-validator
+        agentRef: fraud-agent
+      - id: growth-agent
+        role: customer-advocate
+        agentRef: growth-agent
+      - id: compliance-agent
+        role: compliance-reviewer
+        agentRef: compliance-agent
+      - id: risk-agent
+        role: risk
+        agentRef: risk-agent
+
+    contextTemplate:
+      claimId: "{{ inputs.claimId }}"
+      claimAmount: "{{ inputs.claimAmount }}"
+      policyAge: "{{ inputs.policyAge }}"
+      priorClaims: "{{ inputs.priorClaims }}"
+      isHighValuePolicy: "{{ inputs.isHighValuePolicy }}"
+      incidentSeverity: "{{ inputs.incidentSeverity }}"
+      deviceTrustScore: 0.5
+      transactionAmount: "{{ inputs.claimAmount }}"
+      accountAgeDays: "{{ inputs.policyAge }}"
+      isVipCustomer: "{{ inputs.isHighValuePolicy }}"
+      priorChargebacks: "{{ inputs.priorClaims }}"
+
+    metadataTemplate:
+      demoType: claims-review
+      decisionOwner: risk-agent
+      specialists:
+        - fraud-agent
+        - growth-agent
+        - compliance-agent
+      intent: review auto insurance claim with multi-framework agents
+
+    kickoffTemplate:
+      - from: risk-agent
+        to: [fraud-agent, growth-agent, compliance-agent]
+        kind: proposal
+        messageType: Proposal
+        payloadEnvelope:
+          encoding: proto
+          proto:
+            typeName: macp.modes.decision.v1.ProposalPayload
+            value:
+              proposal_id: "{{ inputs.claimId }}-review"
+              option: evaluate_claim
+              rationale: Decide whether to approve, investigate further, or deny the claim.
+
+  execution:
+    tags: [demo, claims, mixed-framework, examples]
+    requester:
+      actorId: example-service
+      actorType: service
+
+  outputs:
+    expectedDecisionKinds:
+      - approve
+      - investigate
+      - deny
+    expectedSignals:
+      - suspicious_pattern
+      - prior_claims_history
+      - high_value_policy
+      - severity_assessment

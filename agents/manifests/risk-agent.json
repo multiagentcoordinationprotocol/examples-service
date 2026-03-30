@@ -1,0 +1,24 @@
+{
+  "id": "risk-agent",
+  "name": "Risk Agent",
+  "framework": "custom",
+  "version": "1.0.0",
+  "entrypoint": {
+    "type": "node_file",
+    "value": "src/example-agents/runtime/risk-decider.worker.ts"
+  },
+  "host": {
+    "cwd": ".",
+    "startupTimeoutMs": 15000
+  },
+  "macp": {
+    "role": "coordinator",
+    "supportedMessageTypes": ["Vote", "Commitment"],
+    "capabilities": ["risk-coordination", "final-decision"]
+  },
+  "frameworkConfig": {
+    "entryFunction": "main",
+    "inputMapper": "identity",
+    "outputMapper": "identity"
+  }
+}

@@ -1,0 +1,129 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioVersion
+metadata:
+  pack: lending
+  scenario: loan-underwriting
+  version: 1.0.0
+  name: Loan Underwriting Review
+  summary: Credit, fraud, compliance, and risk agents collaborate on a loan application decision.
+  tags: [lending, credit, fraud, compliance, risk, demo, mixed-framework]
+spec:
+  runtime:
+    kind: rust
+    version: v1
+
+  inputs:
+    schema:
+      type: object
+      properties:
+        applicantId:
+          type: string
+          default: APP-2001
+        loanAmount:
+          type: number
+          default: 25000
+          minimum: 1000
+        creditScore:
+          type: integer
+          default: 680
+          minimum: 300
+          maximum: 850
+        debtToIncomeRatio:
+          type: number
+          default: 0.35
+          minimum: 0
+          maximum: 1
+        employmentYears:
+          type: integer
+          default: 3
+          minimum: 0
+        isExistingCustomer:
+          type: boolean
+          default: true
+        priorDefaults:
+          type: integer
+          default: 0
+          minimum: 0
+      required:
+        - loanAmount
+        - creditScore
+        - debtToIncomeRatio
+        - employmentYears
+        - isExistingCustomer
+        - priorDefaults
+
+  launch:
+    modeName: macp.mode.decision.v1
+    modeVersion: 1.0.0
+    configurationVersion: config.default
+    policyVersion: policy.lending
+    ttlMs: 300000
+    initiatorParticipantId: risk-agent
+
+    participants:
+      - id: fraud-agent
+        role: fraud
+        agentRef: fraud-agent
+      - id: growth-agent
+        role: credit-analyst
+        agentRef: growth-agent
+      - id: compliance-agent
+        role: compliance
+        agentRef: compliance-agent
+      - id: risk-agent
+        role: risk
+        agentRef: risk-agent
+
+    contextTemplate:
+      applicantId: "{{ inputs.applicantId }}"
+      loanAmount: "{{ inputs.loanAmount }}"
+      creditScore: "{{ inputs.creditScore }}"
+      debtToIncomeRatio: "{{ inputs.debtToIncomeRatio }}"
+      employmentYears: "{{ inputs.employmentYears }}"
+      isExistingCustomer: "{{ inputs.isExistingCustomer }}"
+      priorDefaults: "{{ inputs.priorDefaults }}"
+      deviceTrustScore: 0.5
+      transactionAmount: "{{ inputs.loanAmount }}"
+      accountAgeDays: 365
+      isVipCustomer: "{{ inputs.isExistingCustomer }}"
+      priorChargebacks: "{{ inputs.priorDefaults }}"
+
+    metadataTemplate:
+      demoType: loan-underwriting
+      decisionOwner: risk-agent
+      specialists:
+        - fraud-agent
+        - growth-agent
+        - compliance-agent
+      intent: evaluate loan application with multi-framework agents
+
+    kickoffTemplate:
+      - from: risk-agent
+        to: [fraud-agent, growth-agent, compliance-agent]
+        kind: proposal
+        messageType: Proposal
+        payloadEnvelope:
+          encoding: proto
+          proto:
+            typeName: macp.modes.decision.v1.ProposalPayload
+            value:
+              proposal_id: "{{ inputs.applicantId }}-loan-review"
+              option: evaluate_loan_application
+              rationale: Decide whether to approve, conditionally approve, or decline the loan.
+
+  execution:
+    tags: [demo, lending, mixed-framework, examples]
+    requester:
+      actorId: example-service
+      actorType: service
+
+  outputs:
+    expectedDecisionKinds:
+      - approve
+      - conditional_approve
+      - decline
+    expectedSignals:
+      - low_credit_score
+      - high_dti_ratio
+      - prior_defaults
+      - existing_customer

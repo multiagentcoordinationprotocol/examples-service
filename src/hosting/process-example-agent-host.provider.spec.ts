@@ -4,6 +4,9 @@ import { EventEmitter } from 'node:events';
 import { AppConfigService } from '../config/app-config.service';
 import { ExampleAgentDefinition, ExampleAgentRunContext, ParticipantAgentBinding } from '../contracts/example-agents';
 import { ProcessExampleAgentHostProvider } from './process-example-agent-host.provider';
+import { HostAdapterRegistry } from './host-adapter-registry';
+import { LaunchSupervisor } from './launch-supervisor';
+import { ManifestValidator } from './manifest-validator';
 
 jest.mock('node:child_process');
 jest.mock('node:fs');
@@ -62,6 +65,9 @@ function createMockChild(): childProcess.ChildProcess {
 describe('ProcessExampleAgentHostProvider', () => {
   let provider: ProcessExampleAgentHostProvider;
   let config: AppConfigService;
+  let adapterRegistry: HostAdapterRegistry;
+  let supervisor: LaunchSupervisor;
+  let manifestValidator: ManifestValidator;
 
   beforeEach(() => {
     config = {
@@ -72,7 +78,11 @@ describe('ProcessExampleAgentHostProvider', () => {
       controlPlaneTimeoutMs: 10000
     } as AppConfigService;
 
-    provider = new ProcessExampleAgentHostProvider(config);
+    adapterRegistry = new HostAdapterRegistry();
+    supervisor = new LaunchSupervisor();
+    manifestValidator = new ManifestValidator(adapterRegistry);
+
+    provider = new ProcessExampleAgentHostProvider(config, adapterRegistry, supervisor, manifestValidator);
 
     jest.clearAllMocks();
   });
@@ -114,6 +124,12 @@ describe('ProcessExampleAgentHostProvider', () => {
 
       expect(result.participantMetadata?.launcher).toBe('node');
     });
+
+    it('reports adapter availability in metadata', async () => {
+      const result = await provider.resolve(buildDefinition(), buildBinding());
+
+      expect(result.participantMetadata?.adapterAvailable).toBe(true);
+    });
   });
 
   describe('attach', () => {
@@ -130,86 +146,68 @@ describe('ProcessExampleAgentHostProvider', () => {
       expect(result.status).toBe('bootstrapped');
       expect(result.participantMetadata?.processAttached).toBe(false);
       expect(result.participantMetadata?.attachmentMode).toBe('deferred');
-      expect(childProcess.spawn).not.toHaveBeenCalled();
     });
 
-    it('spawns a python process for attached mode', async () => {
+    it('spawns a python process for attached mode via legacy path', async () => {
       (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (childProcess.spawn as jest.Mock).mockReturnValue(createMockChild());
+      const mockChild = createMockChild();
+      jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
+      jest.spyOn(supervisor, 'launch').mockReturnValue({
+        handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
+        child: mockChild,
+        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        launchedAt: '2026-01-01T00:00:00Z',
+        command: 'python3',
+        args: ['test.py'],
+        bootstrapFilePath: '/tmp/bootstrap.json',
+        healthStatus: 'starting'
+      });
 
       const result = await provider.attach(buildDefinition(), buildBinding(), buildContext());
 
-      expect(childProcess.spawn).toHaveBeenCalledWith(
-        'python3',
-        expect.arrayContaining([expect.stringContaining('langgraph_fraud_agent.py')]),
-        expect.objectContaining({
-          env: expect.objectContaining({
-            EXAMPLE_AGENT_RUN_ID: 'run-1',
-            EXAMPLE_AGENT_PARTICIPANT_ID: 'fraud-agent',
-            EXAMPLE_AGENT_FRAMEWORK: 'langgraph',
-            CONTROL_PLANE_BASE_URL: 'http://localhost:3001'
-          })
-        })
-      );
+      expect(supervisor.writeBootstrapFile).toHaveBeenCalled();
+      expect(supervisor.launch).toHaveBeenCalled();
       expect(result.status).toBe('bootstrapped');
       expect(result.participantMetadata?.processAttached).toBe(true);
       expect(result.participantMetadata?.pid).toBe(12345);
-    });
-
-    it('resolves node entrypoints from src/ to dist/', async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (childProcess.spawn as jest.Mock).mockReturnValue(createMockChild());
-
-      const definition = buildDefinition({
-        agentRef: 'risk-agent',
-        framework: 'custom',
-        bootstrap: {
-          ...buildDefinition().bootstrap,
-          entrypoint: 'src/example-agents/runtime/risk-decider.worker.ts',
-          launcher: 'node'
-        }
-      });
-
-      await provider.attach(definition, buildBinding({ participantId: 'risk-agent', agentRef: 'risk-agent' }), buildContext());
-
-      expect(childProcess.spawn).toHaveBeenCalledWith(
-        '/usr/local/bin/node',
-        expect.arrayContaining([expect.stringContaining('dist/example-agents/runtime/risk-decider.worker.js')]),
-        expect.any(Object)
-      );
+      expect(result.participantMetadata?.launchMode).toBe('legacy');
     });
 
     it('throws when entrypoint file does not exist', async () => {
       (fs.existsSync as jest.Mock).mockReturnValue(false);
+      jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
 
       await expect(provider.attach(buildDefinition(), buildBinding(), buildContext())).rejects.toThrow(
         /entrypoint not found/
       );
     });
 
-    it('deduplicates by runId:participantId', async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (childProcess.spawn as jest.Mock).mockReturnValue(createMockChild());
+    it('deduplicates by runId:participantId via supervisor', async () => {
+      const mockChild = createMockChild();
+      jest.spyOn(supervisor, 'getProcess').mockReturnValue({
+        handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
+        child: mockChild,
+        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        launchedAt: '2026-01-01T00:00:00Z',
+        command: 'python3',
+        args: ['test.py'],
+        bootstrapFilePath: '/tmp/bootstrap.json',
+        healthStatus: 'healthy'
+      });
 
-      await provider.attach(buildDefinition(), buildBinding(), buildContext());
-      const second = await provider.attach(buildDefinition(), buildBinding(), buildContext());
+      const result = await provider.attach(buildDefinition(), buildBinding(), buildContext());
 
-      expect(childProcess.spawn).toHaveBeenCalledTimes(1);
-      expect(second.status).toBe('bootstrapped');
-      expect(second.participantMetadata?.processAttached).toBe(true);
+      expect(result.status).toBe('bootstrapped');
+      expect(result.participantMetadata?.processAttached).toBe(true);
+      expect(result.participantMetadata?.pid).toBe(12345);
     });
   });
 
   describe('onModuleDestroy', () => {
-    it('sends SIGTERM to all tracked processes', async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      const mockChild = createMockChild();
-      (childProcess.spawn as jest.Mock).mockReturnValue(mockChild);
-
-      await provider.attach(buildDefinition(), buildBinding(), buildContext());
+    it('delegates cleanup to supervisor', () => {
+      const spy = jest.spyOn(supervisor, 'onModuleDestroy');
       provider.onModuleDestroy();
-
-      expect((mockChild as unknown as { kill: jest.Mock }).kill).toHaveBeenCalledWith('SIGTERM');
+      expect(spy).toHaveBeenCalled();
     });
   });
 });

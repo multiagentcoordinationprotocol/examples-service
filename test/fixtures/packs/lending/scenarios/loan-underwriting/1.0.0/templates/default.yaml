@@ -1,0 +1,14 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: lending/loan-underwriting@1.0.0
+  slug: default
+  name: Default
+spec:
+  defaults:
+    loanAmount: 25000
+    creditScore: 680
+    debtToIncomeRatio: 0.35
+    employmentYears: 3
+    isExistingCustomer: true
+    priorDefaults: 0
