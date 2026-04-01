@@ -7,44 +7,100 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  lint:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
 
-    strategy:
-      matrix:
-        node-version: [20]
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
 
+  test:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --coverage
+      - run: npm run test:e2e
+
+      - name: Validate Python workers
+        run: |
+          python3 -m py_compile agents/python/worker_common.py
+          python3 -m py_compile agents/python/langgraph_fraud_agent.py
+          python3 -m py_compile agents/python/langchain_growth_agent.py
+          python3 -m py_compile agents/python/crewai_compliance_agent.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/__init__.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/bootstrap.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/client.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/message_builder.py
+          python3 -m py_compile agents/langgraph_worker/main.py
+          python3 -m py_compile agents/langgraph_worker/graph.py
+          python3 -m py_compile agents/langgraph_worker/mappers.py
+          python3 -m py_compile agents/langchain_worker/main.py
+          python3 -m py_compile agents/langchain_worker/chain.py
+          python3 -m py_compile agents/langchain_worker/mappers.py
+          python3 -m py_compile agents/crewai_worker/main.py
+          python3 -m py_compile agents/crewai_worker/crew.py
+          python3 -m py_compile agents/crewai_worker/mappers.py
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [lint, build, test]
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          python-version: '3.12'
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=pr
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Audit dependencies
-        run: npm audit --audit-level=moderate || true
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-      - name: Unit tests
-        run: npm run test:cov
-
-      - name: E2E tests
-        run: npm run test:e2e
-
-      - name: Validate Python workers
-        run: python3 -m py_compile agents/python/worker_common.py && python3 -m py_compile agents/python/langgraph_fraud_agent.py && python3 -m py_compile agents/python/langchain_growth_agent.py && python3 -m py_compile agents/python/crewai_compliance_agent.py
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
