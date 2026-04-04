@@ -26,19 +26,19 @@ In a production deployment, these three things are separate:
 
 ```
 src/
-  catalog/           → Pack/scenario listing (read-only)
+  catalog/           → Pack/scenario listing + AgentProfileService (scenario coverage computation)
   compiler/          → Input validation (AJV) + template substitution + ExecutionRequest assembly
   config/            → Environment-based configuration (global module)
   contracts/         → TypeScript interfaces — registry types, launch types, agent types
   control-plane/     → HTTP client for the control plane (/runs/validate, /runs)
-  controllers/       → REST endpoints (health, catalog, launch, examples)
+  controllers/       → REST endpoints (health, catalog, launch, examples, agents)
   dto/               → Swagger-annotated request/response DTOs
   errors/            → AppException, ErrorCode enum, GlobalExceptionFilter
   example-agents/    → Hard-coded example agent catalog (fraud, growth, compliance, risk)
     runtime/         → Worker runtime: control-plane client + risk-decider worker
   hosting/           → Two-phase agent hosting (resolve + attach) + pluggable host providers
   launch/            → Launch schema generation + ExampleRunService (full showcase flow)
-  middleware/        → Correlation ID + request logging
+  middleware/        → Correlation ID + request logging + API key guard
   registry/          → File-backed YAML loader + in-memory cache index
 ```
 
@@ -60,7 +60,9 @@ HTTP Request
 ### 1. Browse Catalog
 
 ```
-GET /packs → CatalogService → RegistryIndexService → FileRegistryLoader → YAML files
+GET /packs             → CatalogService.listPacks() → RegistryIndexService → FileRegistryLoader → YAML files
+GET /packs/:p/scenarios → CatalogService.listScenarios() → same path
+GET /scenarios          → CatalogService.listAllScenarios() → scans all packs, adds packSlug to each
 ```
 
 ### 2. Get Launch Schema
@@ -93,13 +95,29 @@ POST /launch/compile
 POST /examples/run
   → ExampleRunService
     1. Compile (same as above)
-    2. Resolve agents → HostingService.resolve() → ProcessExampleAgentHostProvider
+    2. Apply request overrides (tags, requester, runLabel) if provided
+    3. Resolve agents → HostingService.resolve() → ProcessExampleAgentHostProvider
        → Inject transport identities into ExecutionRequest participants
-    3. Submit to control plane (optional)
+    4. Submit to control plane (optional)
        → ControlPlaneClient.validate() + .createRun()
-    4. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
+    5. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
        → Workers poll control plane for events, send MACP messages back
-    5. Return compiled + hostedAgents + controlPlane status
+    6. Return compiled + hostedAgents + controlPlane status
+```
+
+### 5. Browse Agents
+
+```
+GET /agents
+  → AgentProfileService.listProfiles()
+    1. Load all definitions from ExampleAgentCatalogService.list()
+    2. Scan registry: for each pack → scenario → participant, build agentRef → scenarioRef[] map
+    3. Merge definition metadata with scenario coverage and metrics
+    4. Return AgentProfileDto[]
+
+GET /agents/:agentRef
+  → AgentProfileService.getProfile(agentRef)
+    → Same as above for a single agent (404 AGENT_NOT_FOUND if missing)
 ```
 
 ## Data Flow: Scenario Packs

@@ -15,7 +15,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:e2e": "jest --config test/jest-e2e.config.ts"
+    "test:e2e": "jest --config test/jest-e2e.config.ts",
+    "test:integration": "jest --config test/jest.integration.config.ts --runInBand",
+    "test:integration:docker": "INTEGRATION_CONTROL_PLANE=docker jest --config test/jest.integration.config.ts --runInBand",
+    "test:integration:remote": "INTEGRATION_CONTROL_PLANE=remote jest --config test/jest.integration.config.ts --runInBand"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.16",

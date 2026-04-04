@@ -16,6 +16,7 @@ export class ExampleRunService {
 
   async run(request: RunExampleRequest): Promise<RunExampleResult> {
     const compiled = await this.compiler.compile(request);
+    this.applyRequestOverrides(compiled, request);
     const shouldBootstrap = request.bootstrapAgents ?? this.config.autoBootstrapExampleAgents;
     const resolvedAgents = shouldBootstrap ? await this.hosting.resolve(compiled) : [];
 
@@ -62,5 +63,30 @@ export class ExampleRunService {
         traceId: launched.traceId
       }
     };
+  }
+
+  private applyRequestOverrides(compiled: RunExampleResult['compiled'], request: RunExampleRequest): void {
+    if (request.tags && request.tags.length > 0) {
+      const existingTags = compiled.executionRequest.execution?.tags ?? [];
+      const merged = [...new Set([...existingTags, ...request.tags])];
+      compiled.executionRequest.execution = {
+        ...(compiled.executionRequest.execution ?? {}),
+        tags: merged
+      };
+    }
+
+    if (request.requester) {
+      compiled.executionRequest.execution = {
+        ...(compiled.executionRequest.execution ?? {}),
+        requester: request.requester
+      };
+    }
+
+    if (request.runLabel) {
+      compiled.executionRequest.session.metadata = {
+        ...(compiled.executionRequest.session.metadata ?? {}),
+        runLabel: request.runLabel
+      };
+    }
   }
 }

@@ -95,9 +95,11 @@ if __name__ == '__main__':
     raise SystemExit(main())
 ```
 
-## Step 5: Create a Manifest
+## Step 5: Create a Manifest (Optional)
 
-Create `agents/manifests/my-agent.json`:
+Create `agents/manifests/my-agent.json`. Manifests are loaded via `loadManifest()` and are optional — agents work without a manifest file but fall back to legacy launch mode.
+
+
 
 ```json
 {
@@ -122,7 +124,7 @@ Add an entry to `EXAMPLE_AGENT_DEFINITIONS` in `src/example-agents/example-agent
 
 - Unit test for the adapter in `src/hosting/adapters/adapters.spec.ts`
 - Add the agent to an existing scenario or create a new one
-- Run `npm test` and `npm run test:e2e`
+- Run `npm test`, `npm run test:e2e`, and `npm run test:integration`
 
 ## Key Rules
 

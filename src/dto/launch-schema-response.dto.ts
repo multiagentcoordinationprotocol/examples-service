@@ -52,6 +52,9 @@ export class AgentPreviewDto {
   @ApiProperty({ example: 'langgraph' })
   framework!: string;
 
+  @ApiPropertyOptional({ example: 'Evaluates device, chargeback, and identity-risk signals.' })
+  description?: string;
+
   @ApiProperty({ example: 'agent://fraud-agent' })
   transportIdentity!: string;
 

@@ -197,5 +197,36 @@ describe('Launch (e2e)', () => {
           expect(res.body.controlPlane.submitted).toBe(false);
         });
     });
+
+    it('should merge tags, requester, and runLabel into execution request', () => {
+      return request(app.getHttpServer())
+        .post('/examples/run')
+        .send({
+          scenarioRef: 'fraud/high-value-new-device@1.0.0',
+          submitToControlPlane: false,
+          inputs: {
+            transactionAmount: 3200,
+            deviceTrustScore: 0.12,
+            accountAgeDays: 5,
+            isVipCustomer: true,
+            priorChargebacks: 1
+          },
+          tags: ['ui-launch', 'experiment-1'],
+          requester: { actorId: 'tester@example.com', actorType: 'user' },
+          runLabel: 'E2E test run'
+        })
+        .expect(201)
+        .expect((res: any) => {
+          const execution = res.body.compiled.executionRequest.execution;
+          expect(execution.tags).toContain('ui-launch');
+          expect(execution.tags).toContain('experiment-1');
+          expect(execution.tags).toContain('example');
+          expect(execution.requester.actorId).toBe('tester@example.com');
+          expect(execution.requester.actorType).toBe('user');
+
+          const metadata = res.body.compiled.executionRequest.session.metadata;
+          expect(metadata.runLabel).toBe('E2E test run');
+        });
+    });
   });
 });

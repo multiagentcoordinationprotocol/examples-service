@@ -47,3 +47,5 @@ plans/
 
 .claude/
 CLAUDE.md
+
+.env

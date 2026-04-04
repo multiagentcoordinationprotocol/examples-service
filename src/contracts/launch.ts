@@ -98,6 +98,9 @@ export interface CompileLaunchResult {
 export interface RunExampleRequest extends CompileLaunchRequest {
   bootstrapAgents?: boolean;
   submitToControlPlane?: boolean;
+  tags?: string[];
+  requester?: { actorId?: string; actorType?: 'user' | 'service' | 'system' };
+  runLabel?: string;
 }
 
 export interface RunExampleResult {
