@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ScenarioSummaryDto {
+  @ApiPropertyOptional({ example: 'fraud', description: 'Pack slug. Present in cross-pack listings.' })
+  packSlug?: string;
+
   @ApiProperty({ example: 'high-value-new-device' })
   scenario!: string;
 

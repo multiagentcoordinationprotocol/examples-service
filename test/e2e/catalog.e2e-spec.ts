@@ -77,4 +77,25 @@ describe('Catalog (e2e)', () => {
         });
     });
   });
+
+  describe('GET /scenarios (cross-pack)', () => {
+    it('should return all scenarios across packs with packSlug', () => {
+      return request(app.getHttpServer())
+        .get('/scenarios')
+        .expect(200)
+        .expect((res: any) => {
+          expect(res.body.length).toBeGreaterThanOrEqual(3);
+          const packSlugs = res.body.map((s: any) => s.packSlug);
+          expect(packSlugs).toContain('fraud');
+          expect(packSlugs).toContain('lending');
+          expect(packSlugs).toContain('claims');
+
+          for (const scenario of res.body) {
+            expect(scenario.packSlug).toBeDefined();
+            expect(scenario.scenario).toBeDefined();
+            expect(scenario.versions).toBeDefined();
+          }
+        });
+    });
+  });
 });

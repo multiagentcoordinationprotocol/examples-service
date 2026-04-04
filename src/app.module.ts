@@ -1,10 +1,12 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { AgentProfileService } from './catalog/agent-profile.service';
 import { CatalogService } from './catalog/catalog.service';
 import { CompilerService } from './compiler/compiler.service';
 import { ConfigModule } from './config/config.module';
 import { ControlPlaneClient } from './control-plane/control-plane.client';
+import { AgentsController } from './controllers/agents.controller';
 import { CatalogController } from './controllers/catalog.controller';
 import { ExamplesController } from './controllers/examples.controller';
 import { HealthController } from './controllers/health.controller';
@@ -29,11 +31,12 @@ import { RegistryIndexService } from './registry/registry-index.service';
     ConfigModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])
   ],
-  controllers: [HealthController, CatalogController, LaunchController, ExamplesController],
+  controllers: [HealthController, CatalogController, LaunchController, ExamplesController, AgentsController],
   providers: [
     FileRegistryLoader,
     RegistryIndexService,
     CatalogService,
+    AgentProfileService,
     LaunchService,
     CompilerService,
     ExampleAgentCatalogService,

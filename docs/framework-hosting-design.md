@@ -8,11 +8,12 @@ The MACP Example Showcase Service uses a **framework-neutral hosting architectur
 
 ```
 POST /examples/run
-  → CompilerService.compile()          [framework-agnostic]
-  → HostingService.resolve()           [materializes agent metadata]
-  → ControlPlaneClient.validate()      [standard MACP contract]
-  → ControlPlaneClient.createRun()     [standard MACP contract]
-  → HostingService.attach()            [launches framework workers]
+  → CompilerService.compile()              [framework-agnostic]
+  → applyRequestOverrides(tags/requester)  [merge UI-provided fields]
+  → HostingService.resolve()               [materializes agent metadata]
+  → ControlPlaneClient.validate()          [standard MACP contract]
+  → ControlPlaneClient.createRun()         [standard MACP contract]
+  → HostingService.attach()                [launches framework workers]
     → ProcessExampleAgentHostProvider
       → HostAdapterRegistry.get(framework)
       → ManifestValidator.validate(manifest)
@@ -74,6 +75,9 @@ Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BO
 | Adapter Registry | `src/hosting/host-adapter-registry.ts` | Maps framework → adapter |
 | Manifest Validator | `src/hosting/manifest-validator.ts` | Pre-spawn validation |
 | Launch Supervisor | `src/hosting/launch-supervisor.ts` | Process lifecycle management |
+| Hosting Service | `src/hosting/hosting.service.ts` | Two-phase resolve + attach orchestration |
+| Agent Profile Service | `src/catalog/agent-profile.service.ts` | Builds agent profiles with registry-scanned scenario coverage |
+| Agent Catalog | `src/example-agents/example-agent-catalog.service.ts` | Hard-coded agent definitions (4 agents) |
 | Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python SDK for workers |
 | Node Worker SDK | `agents/sdk/node/` | Shared Node SDK for workers |
 
