@@ -111,7 +111,11 @@ describe('AgentProfileService', () => {
       getSnapshot: jest.fn().mockResolvedValue(mockSnapshot)
     };
 
-    service = new AgentProfileService(mockAgentCatalog, mockRegistryIndex);
+    const mockControlPlaneClient = {
+      getAgentMetrics: jest.fn().mockResolvedValue([])
+    };
+
+    service = new AgentProfileService(mockAgentCatalog, mockRegistryIndex, mockControlPlaneClient as any);
   });
 
   describe('listProfiles', () => {

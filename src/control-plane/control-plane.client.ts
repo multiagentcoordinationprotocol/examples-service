@@ -10,6 +10,14 @@ interface ControlPlaneRunResponse {
   traceId?: string;
 }
 
+export interface AgentMetricsEntry {
+  participantId: string;
+  runs: number;
+  signals: number;
+  messages: number;
+  averageConfidence: number;
+}
+
 @Injectable()
 export class ControlPlaneClient {
   constructor(private readonly config: AppConfigService) {}
@@ -24,6 +32,32 @@ export class ControlPlaneClient {
 
   async createRun(request: ExecutionRequest): Promise<ControlPlaneRunResponse> {
     return this.request<ControlPlaneRunResponse>('/runs', request);
+  }
+
+  async getAgentMetrics(): Promise<AgentMetricsEntry[]> {
+    return this.get<AgentMetricsEntry[]>('/dashboard/agents/metrics');
+  }
+
+  private async get<T>(path: string): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.controlPlaneTimeoutMs);
+    try {
+      const response = await fetch(`${this.config.controlPlaneBaseUrl}${path}`, {
+        method: 'GET',
+        headers: {
+          ...(this.config.controlPlaneApiKey
+            ? { authorization: `Bearer ${this.config.controlPlaneApiKey}` }
+            : {})
+        },
+        signal: controller.signal
+      });
+      if (!response.ok) return [] as unknown as T;
+      return (await response.json()) as T;
+    } catch {
+      return [] as unknown as T;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private async request<T = void>(path: string, body: unknown): Promise<T> {

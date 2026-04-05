@@ -120,7 +120,10 @@ export class CompilerService {
           metadata: {
             source: 'example-service',
             sourceRef: request.scenarioRef,
+            scenarioRef: request.scenarioRef,
+            templateId: request.templateId ?? 'default',
             template: request.templateId ?? 'default',
+            environment: process.env.NODE_ENV ?? 'development',
             ...metadataFromTemplate
           }
         },
