@@ -24,7 +24,7 @@ npm run format             # Prettier formatting
 ### Testing
 
 ```bash
-npm test                                    # Unit tests (Jest, 205 tests across 27 spec files)
+npm test                                    # Unit tests (Jest, 242+ tests across 28 spec files)
 npm test -- --testPathPattern=compiler      # Run a single test file by name
 npm run test:e2e                            # E2E tests (supertest, 31 tests)
 npm run test:integration                    # Integration tests with mock control plane (60 tests)
@@ -66,7 +66,7 @@ npm run test:integration:remote             # Integration tests against remote c
 - **Catalog** (`src/catalog/`) — Read-only endpoints to browse packs and scenarios. `CatalogService` lists packs and scenarios (per-pack and cross-pack). `AgentProfileService` builds agent profiles by cross-referencing the agent catalog with the registry to compute scenario coverage.
 - **Compiler** (`src/compiler/`) — `CompilerService` validates inputs against JSON Schema (ajv), `template-resolver` handles `{{ inputs.* }}` substitution, default merging (`deepMerge`), and `parseScenarioRef`.
 - **Launch** (`src/launch/`) — `LaunchService` generates launch schemas with agent previews. `ExampleRunService` orchestrates the full showcase flow (compile → apply overrides → resolve agents → submit → attach workers). Supports optional `tags`, `requester`, and `runLabel` fields for UI-driven launches.
-- **Example Agents** (`src/example-agents/`) — `ExampleAgentCatalogService` holds four demo agent definitions (fraud/LangGraph, growth/LangChain, compliance/CrewAI, risk/custom) with manifest-driven configs. Worker runtime utilities in `src/example-agents/runtime/`.
+- **Example Agents** (`src/example-agents/`) — `ExampleAgentCatalogService` holds four demo agent definitions (fraud/LangGraph, growth/LangChain, compliance/CrewAI, risk/custom) with manifest-driven configs. Worker runtime includes `risk-decider.worker.ts` (policy-aware coordinator using `PolicyStrategy`) and `control-plane-agent-client.ts` (HTTP client + context loader).
 - **Hosting** (`src/hosting/`) — Framework-neutral hosting via adapter pattern. `HostAdapterRegistry` maps framework → adapter. `ManifestValidator` validates before spawn. `LaunchSupervisor` manages process lifecycle. `ProcessExampleAgentHostProvider` orchestrates resolve/attach. See `docs/framework-hosting-design.md` for full details.
   - **Adapters** (`src/hosting/adapters/`) — `LangGraphHostAdapter`, `LangChainHostAdapter`, `CrewAIHostAdapter`, `CustomHostAdapter`.
   - **Contracts** (`src/hosting/contracts/`) — `AgentManifest`, `BootstrapPayload`, `AgentHostAdapter` interfaces.
@@ -78,13 +78,29 @@ npm run test:integration:remote             # Integration tests against remote c
 
 **Framework Workers** (`agents/`):
 
-- `agents/langgraph_worker/` — Real LangGraph graph for fraud detection (falls back without langgraph installed)
-- `agents/langchain_worker/` — Real LangChain chain for growth analysis (falls back without langchain installed)
-- `agents/crewai_worker/` — Real CrewAI crew for compliance review (falls back without crewai installed)
-- `agents/sdk/python/macp_worker_sdk/` — Shared Python SDK (bootstrap, control plane client, message builder)
-- `agents/sdk/node/` — Shared Node SDK (same contract)
+- `agents/langgraph_worker/` — Real LangGraph graph for fraud detection (falls back without langgraph installed). Uses `Participant` SDK abstraction.
+- `agents/langchain_worker/` — Real LangChain chain for growth analysis (falls back without langchain installed). Uses `Participant` SDK abstraction.
+- `agents/crewai_worker/` — Real CrewAI crew for compliance review (falls back without crewai installed). Uses `Participant` SDK abstraction.
+- `agents/sdk/python/macp_worker_sdk/` — Shared Python SDK: bootstrap, control plane client, message builder, **`Participant` abstraction** (event loop + handler registration), and **`PolicyStrategy`** (policy-aware decision logic).
+- `agents/sdk/node/` — Shared Node SDK: same contract plus `Participant`, `PolicyStrategy`, `PolicyHints`.
 - `agents/manifests/` — JSON manifest files defining each agent's framework config
 - `agents/python/` — Legacy shim workers (preserved for backward compatibility)
+
+**Policy Files** (`policies/`):
+
+- `policy.default.json` — No governance constraints (backward-compatible default)
+- `policy.fraud.majority-veto.json` — Simple majority with blocking-objection veto
+- `policy.fraud.supermajority.json` — Two-thirds supermajority
+- `policy.fraud.unanimous.json` — 100% approval required, mandatory evaluations
+- `policy.lending.conservative.json` — Supermajority with mandatory evals and veto
+- `policy.claims.majority.json` — Simple majority, 2-voter quorum
+
+Policy rules flow via `policyVersion` and `policyHints` through: scenario YAML → template overrides → compiler → ExecutionRequest → bootstrap payload → worker. The risk-decider coordinator uses `PolicyStrategy` to apply policy-driven quorum and voting logic.
+
+**RFC-MACP-0012 policy fields** (aligned with control-plane runtime):
+- `vetoThreshold` (default 1) — Number of high/critical severity objections required to trigger a veto block
+- `minimumConfidence` (default 0.0) — Evaluations below this confidence threshold are disqualified from voting
+- `designatedRoles` (default []) — Roles designated for commitment authority in the decision
 
 ## API Endpoints
 

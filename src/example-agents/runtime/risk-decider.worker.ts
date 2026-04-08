@@ -1,7 +1,6 @@
 import {
-  AgentRuntimeContext,
-  buildProtoEnvelope,
   ControlPlaneAgentClient,
+  buildProtoEnvelope,
   extractDecodedPayload,
   extractMessageType,
   extractProposalId,
@@ -9,93 +8,25 @@ import {
   loadAgentRuntimeContext,
   logAgent
 } from './control-plane-agent-client';
-
-type SpecialistResponse = {
-  messageType: 'Evaluation' | 'Objection';
-  payload: Record<string, unknown>;
-};
-
-function toNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
-function toBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function decisionFromResponses(
-  context: AgentRuntimeContext,
-  responses: Map<string, SpecialistResponse>
-): { action: 'approve' | 'step_up' | 'decline'; reason: string } {
-  const trust = toNumber(context.sessionContext.deviceTrustScore) ?? 0;
-  const chargebacks = toNumber(context.sessionContext.priorChargebacks) ?? 0;
-  const vip = toBoolean(context.sessionContext.isVipCustomer) ?? false;
-
-  let hasBlockingSignal = false;
-  let hasReviewSignal = false;
-
-  for (const response of responses.values()) {
-    if (response.messageType === 'Objection') {
-      const severity = String(response.payload.severity ?? '').toLowerCase();
-      if (['high', 'critical'].includes(severity)) {
-        hasBlockingSignal = true;
-      } else {
-        hasReviewSignal = true;
-      }
-      continue;
-    }
-
-    const recommendation = String(response.payload.recommendation ?? '').toUpperCase();
-    if (['BLOCK', 'REJECT'].includes(recommendation)) {
-      hasBlockingSignal = true;
-    } else if (recommendation === 'REVIEW') {
-      hasReviewSignal = true;
-    }
-  }
-
-  if (trust < 0.08 || chargebacks >= 2) {
-    hasBlockingSignal = true;
-  } else if (trust < 0.18) {
-    hasReviewSignal = true;
-  }
-
-  if (hasBlockingSignal) {
-    return {
-      action: 'decline',
-      reason: 'coordinator observed blocking specialist signals for the proposed transaction'
-    };
-  }
-
-  if (hasReviewSignal || !vip) {
-    return {
-      action: 'step_up',
-      reason: 'coordinator requires additional verification before approval'
-    };
-  }
-
-  return {
-    action: 'approve',
-    reason: 'specialist agents converged on an approval with acceptable risk'
-  };
-}
+import { createPolicyStrategy, SpecialistSignal } from './policy-strategy';
 
 async function main(): Promise<void> {
   const client = new ControlPlaneAgentClient();
   const context = loadAgentRuntimeContext();
+  const strategy = createPolicyStrategy(context.policyHints);
   const deadline = Date.now() + Math.min(Math.max(context.ttlMs + 15000, 60000), 420000);
-  const recipients = context.participants.filter((participant) => participant !== context.participantId);
-  const specialistIds = recipients;
+  const recipients = context.participants.filter((p) => p !== context.participantId);
 
   let afterSeq = 0;
   let proposalId: string | undefined;
-  let proposalSeenAt = 0;
-  let voteSent = false;
-  const specialistResponses = new Map<string, SpecialistResponse>();
+  let committed = false;
+  const signals = new Map<string, SpecialistSignal>();
 
-  logAgent('risk agent worker started', {
+  logAgent('risk coordinator started', {
     participantId: context.participantId,
     scenarioRef: context.scenarioRef,
-    framework: context.framework
+    policyType: context.policyHints?.type ?? 'none',
+    policyVersion: context.policyVersion ?? ''
   });
 
   while (Date.now() < deadline) {
@@ -116,53 +47,52 @@ async function main(): Promise<void> {
 
       if (event.type === 'proposal.created' && !proposalId) {
         proposalId = extractProposalId(event);
-        proposalSeenAt = Date.now();
         if (proposalId) {
           logAgent('proposal observed', { proposalId, seq: event.seq });
         }
         continue;
       }
 
-      if (event.type !== 'proposal.updated' || !proposalId) {
-        continue;
-      }
+      if (event.type !== 'proposal.updated' || !proposalId) continue;
 
       const eventProposalId = extractProposalId(event);
-      if (!eventProposalId || eventProposalId !== proposalId) {
-        continue;
-      }
+      if (!eventProposalId || eventProposalId !== proposalId) continue;
 
       const sender = extractSender(event);
       const messageType = extractMessageType(event);
-      if (!sender || sender === context.participantId || !messageType) {
-        continue;
-      }
+      if (!sender || sender === context.participantId || !messageType) continue;
 
-      if (messageType !== 'Evaluation' && messageType !== 'Objection') {
-        continue;
+      if (messageType === 'Evaluation') {
+        const payload = extractDecodedPayload(event);
+        signals.set(sender, {
+          participantId: sender,
+          messageType: 'Evaluation',
+          recommendation: String(payload.recommendation ?? ''),
+          confidence: Number(payload.confidence ?? 0),
+          reason: String(payload.reason ?? '')
+        });
+      } else if (messageType === 'Objection') {
+        const payload = extractDecodedPayload(event);
+        signals.set(sender, {
+          participantId: sender,
+          messageType: 'Objection',
+          severity: String(payload.severity ?? 'high'),
+          reason: String(payload.reason ?? '')
+        });
       }
-
-      specialistResponses.set(sender, {
-        messageType,
-        payload: extractDecodedPayload(event)
-      });
     }
 
-    const readyToFinalize =
-      !!proposalId &&
-      !voteSent &&
-      specialistResponses.size > 0 &&
-      (specialistResponses.size >= specialistIds.length || Date.now() - proposalSeenAt > 15000);
+    if (proposalId && !committed && strategy.isQuorumMet(signals, recipients.length)) {
+      committed = true;
+      const decision = strategy.decide(signals, context.sessionContext);
 
-    if (readyToFinalize && proposalId) {
-      const finalDecision = decisionFromResponses(context, specialistResponses);
-      const vote = finalDecision.action === 'decline' ? 'reject' : 'approve';
-
-      logAgent('sending vote', {
+      logAgent('policy-driven decision', {
         proposalId,
-        vote,
-        action: finalDecision.action,
-        specialistResponses: specialistResponses.size
+        action: decision.action,
+        vote: decision.vote,
+        reason: decision.reason,
+        policyApplied: decision.policyApplied,
+        specialistCount: signals.size
       });
 
       await client.sendMessage(context.runId, {
@@ -171,14 +101,10 @@ async function main(): Promise<void> {
         messageType: 'Vote',
         payloadEnvelope: buildProtoEnvelope('macp.modes.decision.v1.VotePayload', {
           proposal_id: proposalId,
-          vote,
-          reason: finalDecision.reason
+          vote: decision.vote,
+          reason: decision.reason
         }),
-        metadata: {
-          framework: context.framework,
-          agentRef: context.agentRef,
-          hostKind: 'node-process'
-        }
+        metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
       });
 
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -189,25 +115,20 @@ async function main(): Promise<void> {
         messageType: 'Commitment',
         payloadEnvelope: buildProtoEnvelope('macp.v1.CommitmentPayload', {
           commitment_id: `${proposalId}-final`,
-          action: finalDecision.action,
+          action: decision.action,
           authority_scope: 'transaction_review',
-          reason: finalDecision.reason,
+          reason: decision.reason,
           mode_version: context.modeVersion,
           policy_version: context.policyVersion ?? '',
-          configuration_version: context.configurationVersion
+          configuration_version: context.configurationVersion,
+          designated_roles: context.policyHints?.designatedRoles ?? [],
+          veto_threshold: context.policyHints?.vetoThreshold ?? 1,
+          minimum_confidence: context.policyHints?.minimumConfidence ?? 0.0
         }),
-        metadata: {
-          framework: context.framework,
-          agentRef: context.agentRef,
-          hostKind: 'node-process'
-        }
+        metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
       });
 
-      logAgent('commitment sent', {
-        proposalId,
-        action: finalDecision.action
-      });
-      voteSent = true;
+      logAgent('commitment sent', { proposalId, action: decision.action });
       await new Promise((resolve) => setTimeout(resolve, 750));
       return;
     }
@@ -215,14 +136,11 @@ async function main(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 750));
   }
 
-  logAgent('risk agent worker timed out before finalization', {
-    participantId: context.participantId,
-    proposalId
-  });
+  logAgent('risk coordinator timed out', { participantId: context.participantId, proposalId });
 }
 
 void main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  logAgent('risk agent worker failed', { error: message });
+  logAgent('risk coordinator failed', { error: message });
   process.exitCode = 1;
 });

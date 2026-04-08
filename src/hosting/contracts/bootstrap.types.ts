@@ -27,6 +27,16 @@ export interface BootstrapPayload {
     modeVersion: string;
     configurationVersion: string;
     policyVersion?: string;
+    policyHints?: {
+      type?: string;
+      description?: string;
+      threshold?: number;
+      vetoEnabled?: boolean;
+      vetoRoles?: string[];
+      vetoThreshold?: number;
+      minimumConfidence?: number;
+      designatedRoles?: string[];
+    };
     ttlMs: number;
     initiatorParticipantId?: string;
     tags?: string[];

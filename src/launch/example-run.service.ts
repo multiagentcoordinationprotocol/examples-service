@@ -44,6 +44,7 @@ export class ExampleRunService {
           modeVersion: compiled.executionRequest.session.modeVersion,
           configurationVersion: compiled.executionRequest.session.configurationVersion,
           policyVersion: compiled.executionRequest.session.policyVersion,
+          policyHints: compiled.executionRequest.session.policyHints,
           ttlMs: compiled.executionRequest.session.ttlMs,
           sessionContext: compiled.executionRequest.session.context,
           participants: compiled.executionRequest.session.participants.map((participant) => participant.id),

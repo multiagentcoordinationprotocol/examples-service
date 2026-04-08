@@ -1,16 +1,16 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { GlobalExceptionFilter } from './exception.filter';
 import { AppException } from './app-exception';
 import { ErrorCode } from './error-codes';
 
-function createMockHost(mockJson: jest.Mock) {
+function createMockHost(mockJson: jest.Mock): ArgumentsHost {
   return {
     switchToHttp: () => ({
       getResponse: () => ({
         status: jest.fn().mockReturnValue({ json: mockJson })
       })
     })
-  } as any;
+  } as unknown as ArgumentsHost;
 }
 
 describe('GlobalExceptionFilter', () => {

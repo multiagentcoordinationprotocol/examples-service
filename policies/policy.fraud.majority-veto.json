@@ -1,0 +1,26 @@
+{
+  "policy_id": "policy.fraud.majority-veto",
+  "mode": "macp.mode.decision.v1",
+  "schema_version": 1,
+  "description": "Fraud review: simple majority vote with blocking-objection veto and 2-voter quorum",
+  "rules": {
+    "voting": {
+      "algorithm": "majority",
+      "threshold": 0.5,
+      "quorum": { "type": "count", "value": 2 }
+    },
+    "objection_handling": {
+      "block_severity_vetoes": true,
+      "veto_threshold": 1
+    },
+    "evaluation": {
+      "minimum_confidence": 0.0,
+      "required_before_voting": false
+    },
+    "commitment": {
+      "authority": "initiator_only",
+      "require_vote_quorum": true,
+      "designated_roles": []
+    }
+  }
+}

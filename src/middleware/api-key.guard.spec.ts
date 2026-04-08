@@ -1,13 +1,13 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { ApiKeyGuard } from './api-key.guard';
 import { AppConfigService } from '../config/app-config.service';
 
-function createMockContext(headers: Record<string, string> = {}) {
+function createMockContext(headers: Record<string, string> = {}): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ headers })
     })
-  } as any;
+  } as unknown as ExecutionContext;
 }
 
 describe('ApiKeyGuard', () => {

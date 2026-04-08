@@ -103,6 +103,7 @@ export class CompilerService {
           modeVersion: launch.modeVersion,
           configurationVersion: launch.configurationVersion,
           policyVersion: launch.policyVersion,
+          policyHints: launch.policyHints,
           ttlMs: launch.ttlMs,
           initiatorParticipantId,
           participants: launch.participants.map((participant) => ({

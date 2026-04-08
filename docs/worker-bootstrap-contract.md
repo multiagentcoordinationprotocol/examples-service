@@ -43,7 +43,17 @@ interface BootstrapPayload {
     modeName: string;        // e.g., "macp.mode.decision.v1"
     modeVersion: string;
     configurationVersion: string;
-    policyVersion?: string;
+    policyVersion?: string;  // e.g., "policy.fraud.majority-veto"
+    policyHints?: {          // Policy metadata (RFC-MACP-0012 aligned)
+      type?: string;         // e.g., "majority", "unanimous", "none"
+      description?: string;
+      threshold?: number;    // Voting threshold (0-1)
+      vetoEnabled?: boolean;
+      vetoRoles?: string[];
+      vetoThreshold?: number;      // Blocking objections needed for veto (default 1)
+      minimumConfidence?: number;  // Min confidence for evaluations (default 0.0)
+      designatedRoles?: string[];  // Roles with commitment authority
+    };
     ttlMs: number;           // Session time-to-live
     initiatorParticipantId?: string;
     tags?: string[];
@@ -74,7 +84,54 @@ interface BootstrapPayload {
 4. **Respond**: Worker sends MACP messages via `POST /runs/{runId}/messages`
 5. **Exit**: Worker exits after sending its response or when the run reaches a terminal state
 
-## Using the Python SDK
+## Using the Python SDK (Participant Abstraction)
+
+```python
+from macp_worker_sdk.participant import from_bootstrap
+from macp_worker_sdk.bootstrap import log_agent
+
+participant = from_bootstrap()
+
+@participant.on('Proposal')
+def handle_proposal(ctx):
+    # ctx.bootstrap — full BootstrapContext (session_context, policy_hints, etc.)
+    # ctx.actions — evaluate(), object(), vote(), commit()
+    # ctx.proposal_id, ctx.sender, ctx.payload — event data
+    ctx.actions.evaluate(
+        proposal_id=ctx.proposal_id,
+        recommendation='APPROVE',
+        confidence=0.85,
+        reason='looks good',
+    )
+    participant.stop()
+
+participant.run()
+```
+
+## Using the Node SDK (Participant Abstraction)
+
+```typescript
+import { Participant, loadBootstrap, logAgent } from '../sdk/node';
+
+const bootstrap = loadBootstrap();
+const participant = new Participant(bootstrap);
+
+participant.on('Proposal', async (ctx) => {
+  await ctx.actions.evaluate({
+    proposalId: ctx.proposalId!,
+    recommendation: 'APPROVE',
+    confidence: 0.85,
+    reason: 'acceptable risk'
+  });
+  participant.stop();
+});
+
+await participant.run();
+```
+
+## Low-Level SDK (Direct Client Access)
+
+The `Participant` abstraction is the recommended approach. For advanced use cases, you can still use the low-level client directly:
 
 ```python
 from macp_worker_sdk import load_bootstrap, ControlPlaneClient, MacpMessageBuilder
@@ -82,28 +139,7 @@ from macp_worker_sdk import load_bootstrap, ControlPlaneClient, MacpMessageBuild
 ctx = load_bootstrap()
 client = ControlPlaneClient(ctx)
 builder = MacpMessageBuilder(ctx.run_id, ctx.participant_id, ctx.framework, ctx.participant.agent_id)
-
-# Poll for events
 events = client.get_events(after_seq=0)
-
-# Send an evaluation
 msg = builder.evaluation(proposal_id, 'APPROVE', 0.85, 'looks good', recipients)
 client.send_message(msg)
-```
-
-## Using the Node SDK
-
-```typescript
-import { loadBootstrap, ControlPlaneClient, MacpMessageBuilder } from '../sdk/node';
-
-const ctx = loadBootstrap();
-const client = new ControlPlaneClient(ctx);
-const builder = new MacpMessageBuilder(ctx.run.runId, ctx.participant.participantId, 'custom', 'risk-agent');
-
-// Poll for events
-const events = await client.getEvents(0);
-
-// Send a vote
-const msg = builder.vote(proposalId, 'approve', 'acceptable risk', recipients);
-await client.sendMessage(msg);
 ```

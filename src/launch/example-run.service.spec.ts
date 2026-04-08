@@ -22,6 +22,13 @@ describe('ExampleRunService', () => {
         modeVersion: '1.0.0',
         configurationVersion: 'config.default',
         policyVersion: 'policy.default',
+        policyHints: {
+          type: 'none',
+          description: 'No governance constraints',
+          vetoThreshold: 1,
+          minimumConfidence: 0.0,
+          designatedRoles: []
+        },
         ttlMs: 300000,
         initiatorParticipantId: 'risk-agent',
         participants: [{ id: 'risk-agent', role: 'risk' }]
@@ -106,6 +113,13 @@ describe('ExampleRunService', () => {
       modeVersion: '1.0.0',
       configurationVersion: 'config.default',
       policyVersion: 'policy.default',
+      policyHints: {
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      },
       ttlMs: 300000,
       sessionContext: undefined,
       participants: ['risk-agent'],

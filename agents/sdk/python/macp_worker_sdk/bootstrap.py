@@ -35,12 +35,25 @@ class RuntimeContext:
 
 
 @dataclass
+class PolicyHints:
+    type: str = 'none'
+    description: str = ''
+    threshold: float = 0.5
+    veto_enabled: bool = False
+    veto_roles: List[str] = field(default_factory=list)
+    veto_threshold: int = 1
+    minimum_confidence: float = 0.0
+    designated_roles: List[str] = field(default_factory=list)
+
+
+@dataclass
 class ExecutionContext:
     scenario_ref: str
     mode_name: str
     mode_version: str
     configuration_version: str
     policy_version: Optional[str] = None
+    policy_hints: Optional[PolicyHints] = None
     ttl_ms: int = 300000
     initiator_participant_id: Optional[str] = None
     tags: List[str] = field(default_factory=list)
@@ -96,6 +109,10 @@ class BootstrapContext:
         return self.participant.role
 
     @property
+    def policy_hints(self) -> Optional[PolicyHints]:
+        return self.execution.policy_hints
+
+    @property
     def session_context(self) -> JsonDict:
         return self.session.context
 
@@ -146,12 +163,26 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
     )
 
     execution_data = raw.get('execution', {})
+    hints_data = execution_data.get('policyHints')
+    policy_hints = None
+    if isinstance(hints_data, dict):
+        policy_hints = PolicyHints(
+            type=hints_data.get('type', 'none'),
+            description=hints_data.get('description', ''),
+            threshold=float(hints_data.get('threshold', 0.5)),
+            veto_enabled=bool(hints_data.get('vetoEnabled', False)),
+            veto_roles=hints_data.get('vetoRoles', []),
+            veto_threshold=int(hints_data.get('vetoThreshold', 1)),
+            minimum_confidence=float(hints_data.get('minimumConfidence', 0.0)),
+            designated_roles=hints_data.get('designatedRoles', []),
+        )
     execution = ExecutionContext(
         scenario_ref=execution_data.get('scenarioRef', ''),
         mode_name=execution_data.get('modeName', ''),
         mode_version=execution_data.get('modeVersion', ''),
         configuration_version=execution_data.get('configurationVersion', ''),
         policy_version=execution_data.get('policyVersion'),
+        policy_hints=policy_hints,
         ttl_ms=execution_data.get('ttlMs', 300000),
         initiator_participant_id=execution_data.get('initiatorParticipantId'),
         tags=execution_data.get('tags', []),

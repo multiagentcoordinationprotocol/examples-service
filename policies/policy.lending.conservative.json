@@ -1,0 +1,26 @@
+{
+  "policy_id": "policy.lending.conservative",
+  "mode": "macp.mode.decision.v1",
+  "schema_version": 1,
+  "description": "Lending: supermajority with compliance veto and mandatory evaluations before voting",
+  "rules": {
+    "voting": {
+      "algorithm": "supermajority",
+      "threshold": 0.67,
+      "quorum": { "type": "count", "value": 3 }
+    },
+    "objection_handling": {
+      "block_severity_vetoes": true,
+      "veto_threshold": 1
+    },
+    "evaluation": {
+      "minimum_confidence": 0.6,
+      "required_before_voting": true
+    },
+    "commitment": {
+      "authority": "initiator_only",
+      "require_vote_quorum": true,
+      "designated_roles": ["risk", "compliance"]
+    }
+  }
+}

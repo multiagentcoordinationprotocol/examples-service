@@ -8,6 +8,16 @@ export interface AgentRuntimeContext {
   modeVersion: string;
   configurationVersion: string;
   policyVersion?: string;
+  policyHints?: {
+    type?: string;
+    description?: string;
+    threshold?: number;
+    vetoEnabled?: boolean;
+    vetoRoles?: string[];
+    vetoThreshold?: number;
+    minimumConfidence?: number;
+    designatedRoles?: string[];
+  };
   ttlMs: number;
   initiatorParticipantId?: string;
   participantId: string;
@@ -86,6 +96,7 @@ export function loadAgentRuntimeContext(): AgentRuntimeContext {
     modeVersion: readEnv('EXAMPLE_AGENT_MODE_VERSION', '1.0.0'),
     configurationVersion: readEnv('EXAMPLE_AGENT_CONFIGURATION_VERSION', 'config.default'),
     policyVersion: process.env.EXAMPLE_AGENT_POLICY_VERSION,
+    policyHints: parseJsonRecord(process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON) as AgentRuntimeContext['policyHints'],
     ttlMs: Number(readEnv('EXAMPLE_AGENT_SESSION_TTL_MS', '300000')),
     initiatorParticipantId: process.env.EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID,
     participantId: readEnv('EXAMPLE_AGENT_PARTICIPANT_ID'),

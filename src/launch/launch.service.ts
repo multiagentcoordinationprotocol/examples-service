@@ -57,6 +57,7 @@ export class LaunchService {
         modeVersion: launch.modeVersion,
         configurationVersion: launch.configurationVersion,
         policyVersion: launch.policyVersion,
+        policyHints: launch.policyHints,
         ttlMs: launch.ttlMs,
         initiatorParticipantId: launch.initiatorParticipantId
       },

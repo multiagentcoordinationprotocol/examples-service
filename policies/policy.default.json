@@ -1,0 +1,25 @@
+{
+  "policy_id": "policy.default",
+  "mode": "*",
+  "schema_version": 1,
+  "description": "Default policy — mode built-in rules apply with no additional governance constraints",
+  "rules": {
+    "voting": {
+      "algorithm": "none",
+      "quorum": { "type": "count", "value": 0 }
+    },
+    "objection_handling": {
+      "block_severity_vetoes": false,
+      "veto_threshold": 1
+    },
+    "evaluation": {
+      "minimum_confidence": 0.0,
+      "required_before_voting": false
+    },
+    "commitment": {
+      "authority": "initiator_only",
+      "require_vote_quorum": false,
+      "designated_roles": []
+    }
+  }
+}
