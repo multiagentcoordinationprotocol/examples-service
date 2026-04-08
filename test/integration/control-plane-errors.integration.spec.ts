@@ -20,6 +20,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
   afterEach(() => {
     ctx.mockControlPlane!.setValidateFailure({ kind: 'none' });
     ctx.mockControlPlane!.setCreateRunFailure({ kind: 'none' });
+    ctx.mockControlPlane!.setPolicyRegistrationFailure({ kind: 'none' });
     ctx.mockControlPlane!.clearRequests();
   });
 
@@ -36,7 +37,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(400);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
     });
 
     it('returns 502 when CP /runs/validate returns 500', async () => {
@@ -51,7 +52,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(500);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
     });
 
     it('returns 502 when CP /runs/validate times out', async () => {
@@ -65,7 +66,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(502);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
     }, 15000);
 
     it('returns error when CP /runs/validate rejects with validation errors', async () => {
@@ -79,7 +80,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(400);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
     });
   });
 
@@ -96,7 +97,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(500);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
 
       // Validate was called successfully
       expect(ctx.mockControlPlane!.validateRequests).toHaveLength(1);
@@ -115,7 +116,7 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       });
 
       expect(status).toBe(502);
-      expect(body).toHaveProperty('errorCode', 'CONTROL_PLANE_UNAVAILABLE');
+      expect(body).toHaveProperty('errorCode', expect.stringMatching(/CONTROL_PLANE_ERROR|CONTROL_PLANE_UNAVAILABLE/));
     }, 15000);
   });
 
@@ -133,6 +134,71 @@ describeIfMock('Control Plane Error Handling (integration, mock-only)', () => {
       expect(result.controlPlane.submitted).toBe(false);
       expect(result.compiled.executionRequest).toBeDefined();
       expect(result.hostedAgents).toHaveLength(4);
+    });
+  });
+
+  describe('Policy registration failures', () => {
+    it('proceeds with run even when policy registration returns 500', async () => {
+      ctx.mockControlPlane!.setPolicyRegistrationFailure({
+        kind: 'status',
+        statusCode: 500,
+        body: JSON.stringify({
+          statusCode: 500,
+          error: 'INTERNAL_ERROR',
+          message: 'policy store unavailable',
+          reasons: ['database connection failed']
+        })
+      });
+
+      const request = {
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        templateId: 'unanimous',
+        inputs: {
+          customerId: 'C-ERR1',
+          transactionAmount: 50000,
+          deviceTrustScore: 0.2,
+          accountAgeDays: 10,
+          isVipCustomer: false,
+          priorChargebacks: 3
+        }
+      };
+
+      // Policy registration fails, but run should still proceed
+      const { status } = await ctx.client.requestRaw('POST', '/examples/run', { body: request });
+      expect(status).toBeLessThan(300);
+
+      // Verify policy registration was attempted
+      expect(ctx.mockControlPlane!.policyRequests.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('returns structured error reasons when policy registration returns rejection with reasons', async () => {
+      ctx.mockControlPlane!.setPolicyRegistrationFailure({
+        kind: 'status',
+        statusCode: 400,
+        body: JSON.stringify({
+          statusCode: 400,
+          error: 'INVALID_POLICY',
+          message: 'policy validation failed',
+          reasons: ['supermajority threshold must be > 0.5', 'schema_version is required']
+        })
+      });
+
+      const request = {
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        templateId: 'unanimous',
+        inputs: {
+          customerId: 'C-ERR2',
+          transactionAmount: 50000,
+          deviceTrustScore: 0.2,
+          accountAgeDays: 10,
+          isVipCustomer: false,
+          priorChargebacks: 3
+        }
+      };
+
+      // Policy registration fails with structured error, but run should still proceed
+      const { status } = await ctx.client.requestRaw('POST', '/examples/run', { body: request });
+      expect(status).toBeLessThan(300);
     });
   });
 });

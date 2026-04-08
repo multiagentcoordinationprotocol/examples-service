@@ -13,6 +13,7 @@ export interface AgentRuntimeContext {
     description?: string;
     threshold?: number;
     vetoEnabled?: boolean;
+    criticalSeverityVetoes?: boolean;
     vetoRoles?: string[];
     vetoThreshold?: number;
     minimumConfidence?: number;
@@ -192,6 +193,19 @@ export function extractDecodedPayload(event: CanonicalEvent): JsonRecord {
   const data = event.data ?? {};
   const payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined) ?? {};
   return payload;
+}
+
+export const POLICY_EVENT_TYPES = {
+  RESOLVED: 'policy.resolved',
+  COMMITMENT_EVALUATED: 'policy.commitment.evaluated',
+  DENIED: 'policy.denied'
+} as const;
+
+export function isPolicyDenial(event: CanonicalEvent): boolean {
+  return (
+    event.type === POLICY_EVENT_TYPES.DENIED ||
+    (event.type === POLICY_EVENT_TYPES.COMMITMENT_EVALUATED && event.data?.decision === 'deny')
+  );
 }
 
 export function logAgent(message: string, details?: JsonRecord): void {

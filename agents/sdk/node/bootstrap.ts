@@ -7,6 +7,7 @@ export interface PolicyHints {
   description?: string;
   threshold?: number;
   vetoEnabled?: boolean;
+  criticalSeverityVetoes?: boolean;
   vetoRoles?: string[];
   vetoThreshold?: number;
   minimumConfidence?: number;
@@ -22,6 +23,8 @@ export interface BootstrapContext {
     eventsEndpoint: string;
     apiKey?: string;
     timeoutMs: number;
+    runtimeUrl?: string;
+    secure?: boolean;
   };
   execution: {
     scenarioRef: string;

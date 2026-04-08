@@ -110,9 +110,9 @@ describe('PolicyStrategy', () => {
     const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: true };
     const strategy = createPolicyStrategy(hints);
 
-    it('declines immediately on high-severity objection when veto enabled', () => {
+    it('declines on critical-severity objection when veto enabled', () => {
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'compliance violation' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'compliance violation' }),
         signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
@@ -122,6 +122,17 @@ describe('PolicyStrategy', () => {
       expect(decision.reason).toContain('veto threshold');
     });
 
+    it('does not veto on high-severity objection (critical-only)', () => {
+      const signals = signalMap(
+        signal('a', 'Objection', { severity: 'high', reason: 'major concern' }),
+        signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
+        signal('c', 'Evaluation', { recommendation: 'APPROVE' })
+      );
+      const decision = strategy.decide(signals, {});
+      // High severity no longer triggers veto (critical-only per RFC-MACP-0004)
+      expect(decision.policyApplied).toBe('majority');
+    });
+
     it('does not veto on low-severity objection', () => {
       const signals = signalMap(
         signal('a', 'Objection', { severity: 'low', reason: 'minor concern' }),
@@ -129,7 +140,6 @@ describe('PolicyStrategy', () => {
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
       const decision = strategy.decide(signals, {});
-      // Low severity doesn't trigger veto, so majority logic applies
       expect(decision.policyApplied).toBe('majority');
     });
   });
@@ -210,10 +220,10 @@ describe('PolicyStrategy', () => {
       expect(decision.reason).toContain('unanimous');
     });
 
-    it('declines on any objection', () => {
+    it('declines on any objection (unanimous always rejects on objection)', () => {
       const signals = signalMap(
         signal('a', 'Evaluation', { recommendation: 'APPROVE' }),
-        signal('b', 'Objection', { severity: 'high', reason: 'concern' }),
+        signal('b', 'Objection', { severity: 'critical', reason: 'concern' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
       const decision = strategy.decide(signals, {});
@@ -232,25 +242,25 @@ describe('PolicyStrategy', () => {
   });
 
   describe('RFC-MACP-0012: vetoThreshold', () => {
-    it('does not veto when blocking objections are below veto threshold', () => {
+    it('does not veto when critical objections are below veto threshold', () => {
       const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: true, vetoThreshold: 2 };
       const strategy = createPolicyStrategy(hints);
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'compliance issue' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'compliance issue' }),
         signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
       const decision = strategy.decide(signals, {});
-      // Only 1 blocking objection, but threshold is 2 — no veto
+      // Only 1 critical objection, but threshold is 2 — no veto
       expect(decision.action).toBe('approve');
       expect(decision.policyApplied).toBe('majority');
     });
 
-    it('vetoes when blocking objections meet veto threshold of 2', () => {
+    it('vetoes when critical objections meet veto threshold of 2', () => {
       const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: true, vetoThreshold: 2 };
       const strategy = createPolicyStrategy(hints);
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'compliance issue' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'compliance issue' }),
         signal('b', 'Objection', { severity: 'critical', reason: 'fraud detected' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
@@ -264,7 +274,7 @@ describe('PolicyStrategy', () => {
       const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: true };
       const strategy = createPolicyStrategy(hints);
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'concern' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'concern' }),
         signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' })
       );
@@ -273,18 +283,17 @@ describe('PolicyStrategy', () => {
       expect(decision.reason).toContain('veto threshold of 1');
     });
 
-    it('only counts high/critical severity towards veto threshold', () => {
+    it('only counts critical severity towards veto threshold (not high)', () => {
       const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: true, vetoThreshold: 2 };
       const strategy = createPolicyStrategy(hints);
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'major concern' }),
-        signal('b', 'Objection', { severity: 'low', reason: 'minor concern' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'critical concern' }),
+        signal('b', 'Objection', { severity: 'high', reason: 'high concern' }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE' }),
         signal('d', 'Evaluation', { recommendation: 'APPROVE' })
       );
       const decision = strategy.decide(signals, {});
-      // 1 high + 1 low = only 1 high counts toward veto threshold of 2, so no veto triggered
-      // majority voting: 2 approvals out of 4 = 50% >= 50% threshold
+      // 1 critical + 1 high = only 1 critical counts toward veto threshold of 2, so no veto
       expect(decision.reason).not.toContain('veto threshold');
       expect(decision.action).toBe('approve');
     });
@@ -388,6 +397,62 @@ describe('PolicyStrategy', () => {
     });
   });
 
+  describe('ABSTAIN exclusion from voting denominator', () => {
+    it('excludes ABSTAIN votes from approval rate calculation', () => {
+      const hints: PolicyHints = { type: 'majority', threshold: 0.5 };
+      const strategy = createPolicyStrategy(hints);
+      const signals = signalMap(
+        signal('a', 'Evaluation', { recommendation: 'APPROVE', confidence: 0.9 }),
+        signal('b', 'Evaluation', { recommendation: 'ABSTAIN', confidence: 0.8 }),
+        signal('c', 'Evaluation', { recommendation: 'REVIEW', confidence: 0.7 })
+      );
+      const decision = strategy.decide(signals, {});
+      // 1 approve, 1 abstain (excluded), 1 review out of effectiveTotal=2
+      // approvalRate = 1/2 = 50% >= 50% threshold
+      expect(decision.action).toBe('approve');
+    });
+
+    it('handles all ABSTAIN votes gracefully', () => {
+      const hints: PolicyHints = { type: 'majority', threshold: 0.5 };
+      const strategy = createPolicyStrategy(hints);
+      const signals = signalMap(
+        signal('a', 'Evaluation', { recommendation: 'ABSTAIN' }),
+        signal('b', 'Evaluation', { recommendation: 'ABSTAIN' })
+      );
+      const decision = strategy.decide(signals, {});
+      // effectiveTotal = 0, approvalRate = 0
+      expect(decision.action).toBe('step_up');
+    });
+  });
+
+  describe('criticalSeverityVetoes alias', () => {
+    it('accepts criticalSeverityVetoes as alias for vetoEnabled', () => {
+      const hints: PolicyHints = { type: 'majority', threshold: 0.5, criticalSeverityVetoes: true };
+      const strategy = createPolicyStrategy(hints);
+      const signals = signalMap(
+        signal('a', 'Objection', { severity: 'critical', reason: 'critical issue' }),
+        signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
+        signal('c', 'Evaluation', { recommendation: 'APPROVE' })
+      );
+      const decision = strategy.decide(signals, {});
+      expect(decision.action).toBe('decline');
+      expect(decision.reason).toContain('veto threshold');
+    });
+
+    it('vetoEnabled takes precedence over criticalSeverityVetoes', () => {
+      const hints: PolicyHints = { type: 'majority', threshold: 0.5, vetoEnabled: false, criticalSeverityVetoes: true };
+      const strategy = createPolicyStrategy(hints);
+      const signals = signalMap(
+        signal('a', 'Objection', { severity: 'critical', reason: 'critical issue' }),
+        signal('b', 'Evaluation', { recommendation: 'APPROVE' }),
+        signal('c', 'Evaluation', { recommendation: 'APPROVE' })
+      );
+      const decision = strategy.decide(signals, {});
+      // vetoEnabled=false takes precedence
+      expect(decision.policyApplied).toBe('majority');
+    });
+  });
+
   describe('edge cases', () => {
     it('handles empty signals map (0 approvals → step_up)', () => {
       const strategy = createPolicyStrategy({ type: 'majority', threshold: 0.5 });
@@ -413,13 +478,13 @@ describe('PolicyStrategy', () => {
       };
       const strategy = createPolicyStrategy(hints);
       const signals = signalMap(
-        signal('a', 'Objection', { severity: 'high', reason: 'concern' }),
+        signal('a', 'Objection', { severity: 'critical', reason: 'concern' }),
         signal('b', 'Evaluation', { recommendation: 'APPROVE', confidence: 0.9 }),
         signal('c', 'Evaluation', { recommendation: 'APPROVE', confidence: 0.4 }),
         signal('d', 'Evaluation', { recommendation: 'APPROVE', confidence: 0.8 })
       );
       const decision = strategy.decide(signals, {});
-      // 1 objection < vetoThreshold(2), so no veto
+      // 1 critical objection < vetoThreshold(2), so no veto
       // c is below minimumConfidence, so only b and d qualify as approvals
       // 2 qualified approvals out of 4 total = 50% >= 50% threshold
       expect(decision.action).toBe('approve');

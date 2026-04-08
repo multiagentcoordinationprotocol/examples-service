@@ -32,6 +32,8 @@ class RuntimeContext:
     events_endpoint: str
     api_key: Optional[str] = None
     timeout_ms: int = 10000
+    runtime_url: Optional[str] = None
+    secure: bool = False
 
 
 @dataclass
@@ -40,6 +42,7 @@ class PolicyHints:
     description: str = ''
     threshold: float = 0.5
     veto_enabled: bool = False
+    critical_severity_vetoes: bool = False
     veto_roles: List[str] = field(default_factory=list)
     veto_threshold: int = 1
     minimum_confidence: float = 0.0
@@ -160,6 +163,8 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
         events_endpoint=runtime_data.get('eventsEndpoint', ''),
         api_key=runtime_data.get('apiKey'),
         timeout_ms=runtime_data.get('timeoutMs', 10000),
+        runtime_url=runtime_data.get('runtimeUrl'),
+        secure=bool(runtime_data.get('secure', False)),
     )
 
     execution_data = raw.get('execution', {})
@@ -171,6 +176,7 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
             description=hints_data.get('description', ''),
             threshold=float(hints_data.get('threshold', 0.5)),
             veto_enabled=bool(hints_data.get('vetoEnabled', False)),
+            critical_severity_vetoes=bool(hints_data.get('criticalSeverityVetoes', False)),
             veto_roles=hints_data.get('vetoRoles', []),
             veto_threshold=int(hints_data.get('vetoThreshold', 1)),
             minimum_confidence=float(hints_data.get('minimumConfidence', 0.0)),

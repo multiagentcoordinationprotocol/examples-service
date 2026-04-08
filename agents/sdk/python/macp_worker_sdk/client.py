@@ -10,6 +10,23 @@ from macp_worker_sdk.bootstrap import BootstrapContext
 
 JsonDict = Dict[str, Any]
 
+POLICY_EVENT_TYPES = {
+    'RESOLVED': 'policy.resolved',
+    'COMMITMENT_EVALUATED': 'policy.commitment.evaluated',
+    'DENIED': 'policy.denied',
+}
+
+
+def is_policy_denial(event: JsonDict) -> bool:
+    """Check if an event represents a policy denial."""
+    return (
+        event.get('type') == POLICY_EVENT_TYPES['DENIED']
+        or (
+            event.get('type') == POLICY_EVENT_TYPES['COMMITMENT_EVALUATED']
+            and event.get('data', {}).get('decision') == 'deny'
+        )
+    )
+
 
 class ControlPlaneClient:
     """HTTP client for communicating with the MACP control plane from a worker."""
@@ -63,6 +80,17 @@ class ControlPlaneClient:
                 return json.loads(payload)
         except urllib.error.HTTPError as error:
             message = error.read().decode('utf-8', errors='replace')
-            raise RuntimeError(f'{method} {path} failed ({error.code}): {message}') from error
+            reasons: List[str] = []
+            error_message = message
+            try:
+                error_body = json.loads(message)
+                error_message = error_body.get('message', message)
+                reasons = error_body.get('reasons', [])
+            except (json.JSONDecodeError, TypeError):
+                pass
+            reasons_str = f' [reasons: {", ".join(reasons)}]' if reasons else ''
+            raise RuntimeError(
+                f'{method} {path} failed ({error.code}): {error_message}{reasons_str}'
+            ) from error
         except urllib.error.URLError as error:
             raise RuntimeError(f'{method} {path} failed: {error.reason}') from error

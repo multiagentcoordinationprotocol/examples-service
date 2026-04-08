@@ -23,6 +23,7 @@ import { LaunchService } from './launch/launch.service';
 import { ApiKeyGuard } from './middleware/api-key.guard';
 import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
+import { PolicyLoaderService } from './policy/policy-loader.service';
 import { FileRegistryLoader } from './registry/file-registry.loader';
 import { RegistryIndexService } from './registry/registry-index.service';
 
@@ -49,6 +50,7 @@ import { RegistryIndexService } from './registry/registry-index.service';
       useExisting: ProcessExampleAgentHostProvider
     },
     HostingService,
+    PolicyLoaderService,
     ControlPlaneClient,
     ExampleRunService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },

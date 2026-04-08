@@ -23,6 +23,7 @@ export interface LaunchSchemaResponse {
       description?: string;
       threshold?: number;
       vetoEnabled?: boolean;
+      criticalSeverityVetoes?: boolean;
       vetoRoles?: string[];
       vetoThreshold?: number;
       minimumConfidence?: number;
@@ -69,6 +70,7 @@ export interface ExecutionRequest {
       description?: string;
       threshold?: number;
       vetoEnabled?: boolean;
+      criticalSeverityVetoes?: boolean;
       vetoRoles?: string[];
       vetoThreshold?: number;
       minimumConfidence?: number;

@@ -1,17 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RunExampleRequest, RunExampleResult } from '../contracts/launch';
 import { AppConfigService } from '../config/app-config.service';
 import { ControlPlaneClient } from '../control-plane/control-plane.client';
 import { CompilerService } from '../compiler/compiler.service';
 import { HostingService } from '../hosting/hosting.service';
+import { PolicyLoaderService } from '../policy/policy-loader.service';
 
 @Injectable()
 export class ExampleRunService {
+  private readonly logger = new Logger(ExampleRunService.name);
+
   constructor(
     private readonly compiler: CompilerService,
     private readonly hosting: HostingService,
     private readonly controlPlaneClient: ControlPlaneClient,
-    private readonly config: AppConfigService
+    private readonly config: AppConfigService,
+    private readonly policyLoader: PolicyLoaderService
   ) {}
 
   async run(request: RunExampleRequest): Promise<RunExampleResult> {
@@ -30,6 +34,11 @@ export class ExampleRunService {
           submitted: false
         }
       };
+    }
+
+    // Register policy with control plane before creating run
+    if (this.config.registerPoliciesOnLaunch) {
+      await this.registerPolicyIfNeeded(compiled.executionRequest.session.policyVersion);
     }
 
     await this.controlPlaneClient.validate(compiled.executionRequest);
@@ -64,6 +73,25 @@ export class ExampleRunService {
         traceId: launched.traceId
       }
     };
+  }
+
+  private async registerPolicyIfNeeded(policyVersion?: string): Promise<void> {
+    if (!policyVersion || policyVersion === 'policy.default') {
+      return;
+    }
+
+    const policy = this.policyLoader.loadPolicy(policyVersion);
+    if (!policy) {
+      this.logger.warn(`policy ${policyVersion} not found in local policies directory; skipping registration`);
+      return;
+    }
+
+    const result = await this.controlPlaneClient.registerPolicy(policy);
+    if (result.ok) {
+      this.logger.log(`policy ${policyVersion} registered with control plane`);
+    } else {
+      this.logger.warn(`policy ${policyVersion} registration failed: ${result.error}`);
+    }
   }
 
   private applyRequestOverrides(compiled: RunExampleResult['compiled'], request: RunExampleRequest): void {

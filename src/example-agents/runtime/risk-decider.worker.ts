@@ -10,6 +10,10 @@ import {
 } from './control-plane-agent-client';
 import { createPolicyStrategy, SpecialistSignal } from './policy-strategy';
 
+function inferOutcomePositive(action: string): boolean {
+  return action !== 'decline';
+}
+
 async function main(): Promise<void> {
   const client = new ControlPlaneAgentClient();
   const context = loadAgentRuntimeContext();
@@ -116,6 +120,7 @@ async function main(): Promise<void> {
         payloadEnvelope: buildProtoEnvelope('macp.v1.CommitmentPayload', {
           commitment_id: `${proposalId}-final`,
           action: decision.action,
+          outcome_positive: inferOutcomePositive(decision.action),
           authority_scope: 'transaction_review',
           reason: decision.reason,
           mode_version: context.modeVersion,
@@ -128,8 +133,31 @@ async function main(): Promise<void> {
         metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
       });
 
-      logAgent('commitment sent', { proposalId, action: decision.action });
-      await new Promise((resolve) => setTimeout(resolve, 750));
+      logAgent('commitment sent, awaiting policy evaluation', { proposalId, action: decision.action });
+
+      // Wait for policy evaluation after commitment
+      let policyResolved = false;
+      const evalDeadline = Date.now() + 5000;
+      while (Date.now() < evalDeadline && !policyResolved) {
+        const newEvents = await client.getEvents(context.runId, afterSeq, 50);
+        for (const ev of newEvents) {
+          afterSeq = Math.max(afterSeq, ev.seq);
+          if (ev.type === 'policy.commitment.evaluated' || ev.type === 'policy.denied') {
+            logAgent('policy evaluation received', {
+              type: ev.type,
+              decision: ev.data?.decision,
+              reasons: ev.data?.reasons
+            });
+            policyResolved = true;
+          }
+          if (ev.type === 'decision.finalized') {
+            logAgent('decision finalized', { seq: ev.seq });
+            policyResolved = true;
+          }
+        }
+        if (!policyResolved) await new Promise((r) => setTimeout(r, 500));
+      }
+
       return;
     }
 

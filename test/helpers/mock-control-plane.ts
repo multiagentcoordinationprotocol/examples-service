@@ -28,6 +28,8 @@ export class MockControlPlane {
   private _requiredBearerToken?: string;
   private _runCounter = 0;
   private _pendingTimers: ReturnType<typeof setTimeout>[] = [];
+  private _registeredPolicies: Map<string, unknown> = new Map();
+  private _policyRegistrationFailure: FailureMode = { kind: 'none' };
 
   constructor(options?: MockControlPlaneOptions) {
     this._requiredBearerToken = options?.requiredBearerToken;
@@ -53,12 +55,24 @@ export class MockControlPlane {
     return this._requests.filter((r) => r.path === '/runs' && r.method === 'POST');
   }
 
+  get policyRequests(): RecordedRequest[] {
+    return this._requests.filter((r) => r.path === '/runtime/policies' && r.method === 'POST');
+  }
+
+  get registeredPolicies(): Map<string, unknown> {
+    return this._registeredPolicies;
+  }
+
   setValidateFailure(mode: FailureMode): void {
     this._validateFailure = mode;
   }
 
   setCreateRunFailure(mode: FailureMode): void {
     this._createRunFailure = mode;
+  }
+
+  setPolicyRegistrationFailure(mode: FailureMode): void {
+    this._policyRegistrationFailure = mode;
   }
 
   clearRequests(): void {
@@ -132,6 +146,14 @@ export class MockControlPlane {
         this.handleValidate(body, res);
       } else if (method === 'POST' && path === '/runs') {
         this.handleCreateRun(body, res);
+      } else if (method === 'POST' && path === '/runtime/policies') {
+        this.handleRegisterPolicy(body, res);
+      } else if (method === 'GET' && path === '/runtime/policies') {
+        this.handleListPolicies(res);
+      } else if (method === 'GET' && path.startsWith('/runtime/policies/')) {
+        this.handleGetPolicy(path, res);
+      } else if (method === 'DELETE' && path.startsWith('/runtime/policies/')) {
+        this.handleDeletePolicy(path, res);
       } else {
         res.writeHead(404, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -196,6 +218,92 @@ export class MockControlPlane {
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ errors: failure.errors }));
     }
+  }
+
+  private handleRegisterPolicy(body: unknown, res: http.ServerResponse): void {
+    const failure = this._policyRegistrationFailure;
+    if (failure.kind === 'status') {
+      res.writeHead(failure.statusCode, { 'content-type': 'application/json' });
+      res.end(
+        failure.body ??
+          JSON.stringify({
+            statusCode: failure.statusCode,
+            error: 'POLICY_REGISTRATION_FAILED',
+            message: `Mock policy registration failure ${failure.statusCode}`,
+            reasons: ['mock failure reason']
+          })
+      );
+      return;
+    }
+    if (failure.kind === 'timeout') {
+      const timer = setTimeout(() => {
+        res.writeHead(201, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      }, failure.delayMs);
+      this._pendingTimers.push(timer);
+      return;
+    }
+
+    if (!body || typeof body !== 'object') {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid policy definition' }));
+      return;
+    }
+
+    const policy = body as Record<string, unknown>;
+    const policyId = policy.policy_id as string;
+
+    if (!policyId) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing policy_id' }));
+      return;
+    }
+
+    if (policyId === 'policy.default') {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'RESERVED_POLICY_ID', message: 'policy.default is reserved' }));
+      return;
+    }
+
+    if (this._registeredPolicies.has(policyId)) {
+      res.writeHead(409, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'POLICY_ALREADY_EXISTS', message: `policy ${policyId} already exists` }));
+      return;
+    }
+
+    this._registeredPolicies.set(policyId, body);
+    res.writeHead(201, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  }
+
+  private handleListPolicies(res: http.ServerResponse): void {
+    const policies = [...this._registeredPolicies.values()];
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(policies));
+  }
+
+  private handleGetPolicy(reqPath: string, res: http.ServerResponse): void {
+    const policyId = decodeURIComponent(reqPath.replace('/runtime/policies/', ''));
+    const policy = this._registeredPolicies.get(policyId);
+    if (!policy) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'POLICY_NOT_FOUND', message: `policy ${policyId} not found` }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(policy));
+  }
+
+  private handleDeletePolicy(reqPath: string, res: http.ServerResponse): void {
+    const policyId = decodeURIComponent(reqPath.replace('/runtime/policies/', ''));
+    if (!this._registeredPolicies.has(policyId)) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'POLICY_NOT_FOUND', message: `policy ${policyId} not found` }));
+      return;
+    }
+    this._registeredPolicies.delete(policyId);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
   }
 
   private isValidExecutionRequest(body: unknown): boolean {

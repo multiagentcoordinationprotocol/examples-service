@@ -33,7 +33,10 @@ class PolicyStrategy:
     def __init__(self, hints: Optional[PolicyHints] = None) -> None:
         self.type = hints.type if hints else 'none'
         self.threshold = hints.threshold if hints else 0.5
-        self.veto_enabled = hints.veto_enabled if hints else False
+        self.veto_enabled = (
+            hints.veto_enabled if hints and hints.veto_enabled is not None
+            else (hints.critical_severity_vetoes if hints and hasattr(hints, 'critical_severity_vetoes') else False)
+        ) if hints else False
         self.veto_threshold = hints.veto_threshold if hints else 1
         self.minimum_confidence = hints.minimum_confidence if hints else 0.0
 
@@ -47,17 +50,17 @@ class PolicyStrategy:
     def decide(self, signals: Dict[str, SpecialistSignal], session_context: JsonDict) -> PolicyDecision:
         all_signals = list(signals.values())
 
-        # 1. Check for veto-blocking objections (RFC-MACP-0012: veto_threshold)
+        # 1. Check for veto-blocking objections — critical severity only (RFC-MACP-0004)
         if self.veto_enabled:
             blocking = [
                 s for s in all_signals
-                if s.message_type == 'Objection' and s.severity in ('high', 'critical')
+                if s.message_type == 'Objection' and s.severity == 'critical'
             ]
             if len(blocking) >= self.veto_threshold:
                 return PolicyDecision(
                     action='decline',
                     vote='reject',
-                    reason=f'policy {self.type}: {len(blocking)} blocking objection(s) met veto threshold of {self.veto_threshold}',
+                    reason=f'policy {self.type}: {len(blocking)} critical objection(s) met veto threshold of {self.veto_threshold}',
                     policy_applied=self.type,
                 )
 
@@ -81,6 +84,10 @@ class PolicyStrategy:
         )
         objections = sum(1 for s in all_signals if s.message_type == 'Objection')
         total = len(signals)
+
+        # Exclude ABSTAIN votes from voting ratio denominator
+        abstain_count = sum(1 for s in qualified_evals if s.recommendation.upper() == 'ABSTAIN')
+        effective_total = total - abstain_count
 
         # 3. Apply voting algorithm
         if self.type == 'unanimous':
@@ -112,7 +119,7 @@ class PolicyStrategy:
                 policy_applied='unanimous',
             )
 
-        approval_rate = approvals / total if total > 0 else 0.0
+        approval_rate = approvals / effective_total if effective_total > 0 else 0.0
 
         if self.type in ('supermajority', 'majority'):
             if approval_rate >= self.threshold:

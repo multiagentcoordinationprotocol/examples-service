@@ -9,7 +9,7 @@
       "quorum": { "type": "percentage", "value": 1.0 }
     },
     "objection_handling": {
-      "block_severity_vetoes": true,
+      "critical_severity_vetoes": true,
       "veto_threshold": 1
     },
     "evaluation": {
