@@ -29,7 +29,7 @@ export interface PolicyStrategy {
 export function createPolicyStrategy(policyHints: PolicyHints | undefined): PolicyStrategy {
   const type = policyHints?.type ?? 'none';
   const threshold = policyHints?.threshold ?? 0.5;
-  const vetoEnabled = policyHints?.vetoEnabled ?? false;
+  const vetoEnabled = policyHints?.vetoEnabled ?? policyHints?.criticalSeverityVetoes ?? false;
   const vetoThreshold = policyHints?.vetoThreshold ?? 1;
   const minimumConfidence = policyHints?.minimumConfidence ?? 0.0;
 
@@ -46,13 +46,13 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
       // 1. Check for veto-blocking objections (RFC-MACP-0012: veto_threshold)
       if (vetoEnabled) {
         const blockingObjections = all.filter(
-          (s) => s.messageType === 'Objection' && ['high', 'critical'].includes(s.severity ?? '')
+          (s) => s.messageType === 'Objection' && s.severity === 'critical'
         );
         if (blockingObjections.length >= vetoThreshold) {
           return {
             action: 'decline',
             vote: 'reject',
-            reason: `policy ${type}: ${blockingObjections.length} blocking objection(s) met veto threshold of ${vetoThreshold}`,
+            reason: `policy ${type}: ${blockingObjections.length} critical objection(s) met veto threshold of ${vetoThreshold}`,
             policyApplied: type
           };
         }
@@ -75,6 +75,12 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
       ).length;
       const objections = all.filter((s) => s.messageType === 'Objection').length;
       const total = signals.size;
+
+      // Exclude ABSTAIN votes from voting ratio denominator
+      const abstainCount = qualifiedEvaluations.filter(
+        (s) => (s.recommendation ?? '').toUpperCase() === 'ABSTAIN'
+      ).length;
+      const effectiveTotal = total - abstainCount;
 
       // 3. Apply voting algorithm
       if (type === 'unanimous') {
@@ -105,12 +111,12 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
         return {
           action: 'step_up',
           vote: 'approve',
-          reason: 'policy unanimous: mixed signals, stepping up for additional review',
+          reason: 'policy unanimous: mixed signals, stepping up',
           policyApplied: 'unanimous'
         };
       }
 
-      const approvalRate = total > 0 ? approvals / total : 0;
+      const approvalRate = effectiveTotal > 0 ? approvals / effectiveTotal : 0;
 
       if (type === 'supermajority' || type === 'majority') {
         if (approvalRate >= threshold) {
