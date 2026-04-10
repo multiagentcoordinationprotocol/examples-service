@@ -23,6 +23,13 @@ const mockScenario: ScenarioVersionFile = {
       modeVersion: '1.0.0',
       configurationVersion: 'config.default',
       policyVersion: 'policy.default',
+      policyHints: {
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      },
       ttlMs: 300000,
       initiatorParticipantId: 'risk-agent',
       participants: [{ id: 'agent-1', role: 'tester', agentRef: 'fraud-agent' }]
@@ -79,6 +86,13 @@ describe('LaunchService', () => {
       expect(result.participants).toHaveLength(1);
       expect(result.launchSummary.ttlMs).toBe(300000);
       expect(result.launchSummary.policyVersion).toBe('policy.default');
+      expect(result.launchSummary.policyHints).toEqual({
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      });
       expect(result.runtime).toEqual({ kind: 'rust', version: 'v1' });
       expect(result.agents).toHaveLength(1);
       expect(result.expectedDecisionKinds).toEqual(['approve', 'decline']);

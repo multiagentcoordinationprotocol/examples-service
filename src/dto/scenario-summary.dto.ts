@@ -27,4 +27,28 @@ export class ScenarioSummaryDto {
 
   @ApiPropertyOptional({ example: ['fraud-agent', 'growth-agent', 'risk-agent'] })
   agentRefs?: string[];
+
+  @ApiPropertyOptional({ example: 'policy.default' })
+  policyVersion?: string;
+
+  @ApiPropertyOptional({
+    description: 'Governance policy hints aligned with RFC-MACP-0012 per-mode schemas',
+    example: {
+      type: 'none',
+      description: 'Default policy — no additional governance constraints',
+      vetoThreshold: 1,
+      minimumConfidence: 0.0,
+      designatedRoles: []
+    }
+  })
+  policyHints?: {
+    type?: string;
+    description?: string;
+    threshold?: number;
+    vetoEnabled?: boolean;
+    vetoRoles?: string[];
+    vetoThreshold?: number;
+    minimumConfidence?: number;
+    designatedRoles?: string[];
+  };
 }

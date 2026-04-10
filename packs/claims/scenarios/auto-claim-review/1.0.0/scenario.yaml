@@ -49,7 +49,15 @@ spec:
     modeName: macp.mode.decision.v1
     modeVersion: 1.0.0
     configurationVersion: config.default
-    policyVersion: policy.claims
+    policyVersion: policy.claims.majority
+    policyHints:
+      type: majority
+      description: Simple majority vote with 2-voter quorum for claims review
+      threshold: 0.5
+      vetoEnabled: false
+      vetoThreshold: 1
+      minimumConfidence: 0.0
+      designatedRoles: []
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 

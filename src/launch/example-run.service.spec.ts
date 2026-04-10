@@ -4,6 +4,7 @@ import { ControlPlaneClient } from '../control-plane/control-plane.client';
 import { CompilerService } from '../compiler/compiler.service';
 import { HostedExampleAgent } from '../contracts/example-agents';
 import { HostingService } from '../hosting/hosting.service';
+import { PolicyLoaderService } from '../policy/policy-loader.service';
 import { ExampleRunService } from './example-run.service';
 
 describe('ExampleRunService', () => {
@@ -12,6 +13,7 @@ describe('ExampleRunService', () => {
   let hosting: jest.Mocked<HostingService>;
   let controlPlane: jest.Mocked<ControlPlaneClient>;
   let config: AppConfigService;
+  let policyLoader: jest.Mocked<PolicyLoaderService>;
 
   const compiled: CompileLaunchResult = {
     executionRequest: {
@@ -22,6 +24,13 @@ describe('ExampleRunService', () => {
         modeVersion: '1.0.0',
         configurationVersion: 'config.default',
         policyVersion: 'policy.default',
+        policyHints: {
+          type: 'none',
+          description: 'No governance constraints',
+          vetoThreshold: 1,
+          minimumConfidence: 0.0,
+          designatedRoles: []
+        },
         ttlMs: 300000,
         initiatorParticipantId: 'risk-agent',
         participants: [{ id: 'risk-agent', role: 'risk' }]
@@ -66,13 +75,20 @@ describe('ExampleRunService', () => {
     controlPlane = {
       validate: jest.fn().mockResolvedValue(undefined),
       createRun: jest.fn().mockResolvedValue({ runId: 'run-1', status: 'queued', traceId: 'trace-1' }),
+      registerPolicy: jest.fn().mockResolvedValue({ ok: true }),
       baseUrl: 'http://localhost:3001'
     } as unknown as jest.Mocked<ControlPlaneClient>;
     config = {
-      autoBootstrapExampleAgents: true
+      autoBootstrapExampleAgents: true,
+      registerPoliciesOnLaunch: true
     } as AppConfigService;
+    policyLoader = {
+      loadPolicy: jest.fn().mockReturnValue(undefined),
+      listAvailablePolicies: jest.fn().mockReturnValue([]),
+      listRegistrablePolicies: jest.fn().mockReturnValue([])
+    } as unknown as jest.Mocked<PolicyLoaderService>;
 
-    service = new ExampleRunService(compiler, hosting, controlPlane, config);
+    service = new ExampleRunService(compiler, hosting, controlPlane, config, policyLoader);
   });
 
   it('supports dry-run example launches', async () => {
@@ -85,6 +101,7 @@ describe('ExampleRunService', () => {
     expect(hosting.resolve).toHaveBeenCalledWith(compiled);
     expect(hosting.attach).not.toHaveBeenCalled();
     expect(controlPlane.validate).not.toHaveBeenCalled();
+    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
     expect(result.hostedAgents).toEqual(resolvedAgents);
     expect(result.controlPlane?.submitted).toBe(false);
   });
@@ -106,6 +123,13 @@ describe('ExampleRunService', () => {
       modeVersion: '1.0.0',
       configurationVersion: 'config.default',
       policyVersion: 'policy.default',
+      policyHints: {
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      },
       ttlMs: 300000,
       sessionContext: undefined,
       participants: ['risk-agent'],
@@ -113,5 +137,112 @@ describe('ExampleRunService', () => {
     });
     expect(result.hostedAgents).toEqual(attachedAgents);
     expect(result.controlPlane?.runId).toBe('run-1');
+  });
+
+  it('skips policy registration for policy.default', async () => {
+    await service.run({
+      scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      inputs: {}
+    });
+    // policy.default is auto-resolved by runtime, no registration needed
+    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
+  });
+
+  it('registers policy before createRun when policyVersion is not default', async () => {
+    const compiledWithPolicy = {
+      ...compiled,
+      executionRequest: {
+        ...compiled.executionRequest,
+        session: {
+          ...compiled.executionRequest.session,
+          policyVersion: 'policy.fraud.unanimous'
+        }
+      }
+    };
+    compiler.compile.mockResolvedValue(compiledWithPolicy);
+
+    const policyDef = {
+      policy_id: 'policy.fraud.unanimous',
+      mode: 'macp.mode.decision.v1',
+      schema_version: 1,
+      description: 'Unanimous',
+      rules: {
+        voting: { algorithm: 'unanimous' as const },
+        objection_handling: { critical_severity_vetoes: true, veto_threshold: 1 },
+        evaluation: { minimum_confidence: 0.7, required_before_voting: true },
+        commitment: { authority: 'initiator_only' as const, require_vote_quorum: true, designated_roles: [] }
+      }
+    };
+    policyLoader.loadPolicy.mockReturnValue(policyDef);
+
+    await service.run({
+      scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      inputs: {}
+    });
+
+    expect(policyLoader.loadPolicy).toHaveBeenCalledWith('policy.fraud.unanimous');
+    expect(controlPlane.registerPolicy).toHaveBeenCalledWith(policyDef);
+    expect(controlPlane.validate).toHaveBeenCalled();
+    expect(controlPlane.createRun).toHaveBeenCalled();
+  });
+
+  it('proceeds even when policy registration fails', async () => {
+    const compiledWithPolicy = {
+      ...compiled,
+      executionRequest: {
+        ...compiled.executionRequest,
+        session: {
+          ...compiled.executionRequest.session,
+          policyVersion: 'policy.fraud.unanimous'
+        }
+      }
+    };
+    compiler.compile.mockResolvedValue(compiledWithPolicy);
+    policyLoader.loadPolicy.mockReturnValue({
+      policy_id: 'policy.fraud.unanimous',
+      mode: 'macp.mode.decision.v1',
+      schema_version: 1,
+      description: 'test',
+      rules: {
+        voting: { algorithm: 'unanimous' as const },
+        objection_handling: { critical_severity_vetoes: true, veto_threshold: 1 },
+        evaluation: { minimum_confidence: 0, required_before_voting: false },
+        commitment: { authority: 'initiator_only' as const, require_vote_quorum: false, designated_roles: [] }
+      }
+    });
+    controlPlane.registerPolicy.mockResolvedValue({ ok: false, error: 'service unavailable' });
+
+    const result = await service.run({
+      scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      inputs: {}
+    });
+
+    // Should still proceed to validate and createRun
+    expect(controlPlane.validate).toHaveBeenCalled();
+    expect(result.controlPlane?.submitted).toBe(true);
+  });
+
+  it('skips policy registration when registerPoliciesOnLaunch is false', async () => {
+    config = { autoBootstrapExampleAgents: true, registerPoliciesOnLaunch: false } as AppConfigService;
+    service = new ExampleRunService(compiler, hosting, controlPlane, config, policyLoader);
+
+    const compiledWithPolicy = {
+      ...compiled,
+      executionRequest: {
+        ...compiled.executionRequest,
+        session: {
+          ...compiled.executionRequest.session,
+          policyVersion: 'policy.fraud.unanimous'
+        }
+      }
+    };
+    compiler.compile.mockResolvedValue(compiledWithPolicy);
+
+    await service.run({
+      scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      inputs: {}
+    });
+
+    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
   });
 });

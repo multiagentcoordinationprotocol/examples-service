@@ -51,6 +51,12 @@ spec:
     modeVersion: 1.0.0
     configurationVersion: config.default
     policyVersion: policy.default
+    policyHints:
+      type: none
+      description: Default policy — no additional governance constraints
+      vetoThreshold: 1
+      minimumConfidence: 0.0
+      designatedRoles: []
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 

@@ -207,6 +207,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
       EXAMPLE_AGENT_MODE_VERSION: context.modeVersion,
       EXAMPLE_AGENT_CONFIGURATION_VERSION: context.configurationVersion,
       EXAMPLE_AGENT_POLICY_VERSION: context.policyVersion ?? '',
+      EXAMPLE_AGENT_POLICY_HINTS_JSON: JSON.stringify(context.policyHints ?? {}),
       EXAMPLE_AGENT_SESSION_TTL_MS: String(context.ttlMs),
       EXAMPLE_AGENT_CONTEXT_JSON: JSON.stringify(context.sessionContext ?? {}),
       EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID: context.initiatorParticipantId ?? '',
@@ -279,6 +280,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
         modeVersion: context.modeVersion,
         configurationVersion: context.configurationVersion,
         policyVersion: context.policyVersion,
+        policyHints: context.policyHints,
         ttlMs: context.ttlMs,
         initiatorParticipantId: context.initiatorParticipantId,
         requester: 'example-service'

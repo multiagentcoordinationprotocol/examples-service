@@ -70,30 +70,45 @@ Create `agents/myframework_worker/` with:
 - `<framework_specific>.py` — framework setup (graph, chain, crew, etc.)
 - `mappers.py` — input/output mappers
 
-Example `main.py`:
+Example `main.py` using the Participant SDK abstraction:
 
 ```python
 #!/usr/bin/env python3
-import sys, os, time
+import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'sdk', 'python'))
 
-from macp_worker_sdk import load_bootstrap, ControlPlaneClient, MacpMessageBuilder
-from macp_worker_sdk.message_builder import extract_proposal_id
 from macp_worker_sdk.bootstrap import log_agent
+from macp_worker_sdk.participant import from_bootstrap
+
+from my_framework import build_model
+from mappers import map_kickoff_to_inputs
 
 def main() -> int:
-    ctx = load_bootstrap()
-    client = ControlPlaneClient(ctx)
-    builder = MacpMessageBuilder(ctx.run_id, ctx.participant_id, ctx.framework, ctx.participant.agent_id)
+    participant = from_bootstrap()
+    model = build_model()
 
-    # Your framework logic here
-    # ...
+    @participant.on('Proposal')
+    def handle_proposal(ctx):
+        inputs = map_kickoff_to_inputs(ctx.bootstrap.session_context)
+        output = model.invoke(inputs)
 
+        ctx.actions.evaluate(
+            proposal_id=ctx.proposal_id,
+            recommendation=output.get('recommendation', 'REVIEW'),
+            confidence=output.get('confidence', 0.5),
+            reason=output.get('reason', 'model evaluation'),
+        )
+        log_agent('evaluation sent', proposalId=ctx.proposal_id)
+        participant.stop()
+
+    participant.run()
     return 0
 
 if __name__ == '__main__':
     raise SystemExit(main())
 ```
+
+The `Participant` abstraction handles the event poll loop, terminal detection, and deadline enforcement. The handler receives a `MessageContext` with `ctx.actions` for sending messages and `ctx.bootstrap` for accessing run context.
 
 ## Step 5: Create a Manifest (Optional)
 

@@ -2,6 +2,18 @@ import * as fs from 'node:fs';
 
 type JsonRecord = Record<string, unknown>;
 
+export interface PolicyHints {
+  type?: string;
+  description?: string;
+  threshold?: number;
+  vetoEnabled?: boolean;
+  criticalSeverityVetoes?: boolean;
+  vetoRoles?: string[];
+  vetoThreshold?: number;
+  minimumConfidence?: number;
+  designatedRoles?: string[];
+}
+
 export interface BootstrapContext {
   run: { runId: string; sessionId?: string; traceId?: string };
   participant: { participantId: string; agentId: string; displayName: string; role: string };
@@ -11,6 +23,8 @@ export interface BootstrapContext {
     eventsEndpoint: string;
     apiKey?: string;
     timeoutMs: number;
+    runtimeUrl?: string;
+    secure?: boolean;
   };
   execution: {
     scenarioRef: string;
@@ -18,6 +32,7 @@ export interface BootstrapContext {
     modeVersion: string;
     configurationVersion: string;
     policyVersion?: string;
+    policyHints?: PolicyHints;
     ttlMs: number;
     initiatorParticipantId?: string;
     tags?: string[];

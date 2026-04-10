@@ -1,6 +1,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json package-lock.json* ./
+ARG NODE_AUTH_TOKEN
+COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --ignore-scripts
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src/ src/
@@ -12,7 +13,8 @@ RUN apk add --no-cache python3 py3-pip \
   && addgroup -S appgroup \
   && adduser -S appuser -G appgroup
 
-COPY package.json package-lock.json* ./
+ARG NODE_AUTH_TOKEN
+COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --ignore-scripts --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist dist/

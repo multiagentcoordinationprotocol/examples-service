@@ -1,0 +1,25 @@
+{
+  "policy_id": "policy.fraud.unanimous",
+  "mode": "macp.mode.decision.v1",
+  "schema_version": 1,
+  "description": "Fraud review: unanimous approval required — all participants must vote approve",
+  "rules": {
+    "voting": {
+      "algorithm": "unanimous",
+      "quorum": { "type": "percentage", "value": 1.0 }
+    },
+    "objection_handling": {
+      "critical_severity_vetoes": true,
+      "veto_threshold": 1
+    },
+    "evaluation": {
+      "minimum_confidence": 0.7,
+      "required_before_voting": true
+    },
+    "commitment": {
+      "authority": "initiator_only",
+      "require_vote_quorum": true,
+      "designated_roles": []
+    }
+  }
+}

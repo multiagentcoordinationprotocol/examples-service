@@ -44,7 +44,9 @@ export class CatalogService {
           templates,
           tags: latestVersion?.scenario.metadata.tags,
           runtimeKind: latestVersion?.scenario.spec.runtime?.kind ?? 'rust',
-          agentRefs: participants.map((participant) => participant.agentRef)
+          agentRefs: participants.map((participant) => participant.agentRef),
+          policyVersion: latestVersion?.scenario.spec.launch.policyVersion,
+          policyHints: latestVersion?.scenario.spec.launch.policyHints
         });
       }
     }
@@ -70,7 +72,9 @@ export class CatalogService {
         templates,
         tags: latestVersion?.scenario.metadata.tags,
         runtimeKind: latestVersion?.scenario.spec.runtime?.kind ?? 'rust',
-        agentRefs: participants.map((participant) => participant.agentRef)
+        agentRefs: participants.map((participant) => participant.agentRef),
+        policyVersion: latestVersion?.scenario.spec.launch.policyVersion,
+        policyHints: latestVersion?.scenario.spec.launch.policyHints
       });
     }
 

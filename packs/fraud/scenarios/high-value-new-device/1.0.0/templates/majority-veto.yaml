@@ -1,0 +1,24 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: fraud/high-value-new-device@1.0.0
+  slug: majority-veto
+  name: Majority Vote with Veto
+spec:
+  defaults:
+    transactionAmount: 2400
+    deviceTrustScore: 0.18
+    accountAgeDays: 14
+    isVipCustomer: true
+    priorChargebacks: 1
+  overrides:
+    launch:
+      policyVersion: policy.fraud.majority-veto
+      policyHints:
+        type: majority
+        description: Simple majority vote with blocking-objection veto and 2-voter quorum
+        threshold: 0.5
+        vetoEnabled: true
+        vetoThreshold: 1
+        minimumConfidence: 0.0
+        designatedRoles: []

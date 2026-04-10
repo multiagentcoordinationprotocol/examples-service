@@ -13,6 +13,29 @@ export class LaunchSummaryDto {
   @ApiPropertyOptional({ example: 'policy.default' })
   policyVersion?: string;
 
+  @ApiPropertyOptional({
+    description: 'Governance policy hints aligned with RFC-MACP-0012 per-mode schemas',
+    example: {
+      type: 'majority',
+      description: 'Simple majority vote',
+      threshold: 0.5,
+      vetoEnabled: false,
+      vetoThreshold: 1,
+      minimumConfidence: 0.0,
+      designatedRoles: []
+    }
+  })
+  policyHints?: {
+    type?: string;
+    description?: string;
+    threshold?: number;
+    vetoEnabled?: boolean;
+    vetoRoles?: string[];
+    vetoThreshold?: number;
+    minimumConfidence?: number;
+    designatedRoles?: string[];
+  };
+
   @ApiProperty({ example: 300000 })
   ttlMs!: number;
 

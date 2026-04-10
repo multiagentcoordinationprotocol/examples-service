@@ -4,7 +4,7 @@ import { AgentProfileService } from '../catalog/agent-profile.service';
 
 describe('AgentsController', () => {
   let controller: AgentsController;
-  let mockService: any;
+  let mockService: Partial<AgentProfileService>;
 
   const mockProfiles = [
     {

@@ -65,6 +65,7 @@ export async function createIntegrationTestApp(
       controlPlaneApiKey,
       controlPlaneTimeoutMs: overrides?.controlPlaneTimeoutMs ?? 5000,
       autoBootstrapExampleAgents: overrides?.autoBootstrapExampleAgents ?? true,
+      registerPoliciesOnLaunch: true,
       exampleAgentPythonPath: 'python3',
       exampleAgentNodePath: process.execPath,
       authApiKeys: overrides?.authApiKeys ?? []

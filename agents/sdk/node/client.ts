@@ -16,6 +16,19 @@ export interface RunRecord {
   metadata?: JsonRecord;
 }
 
+export const POLICY_EVENT_TYPES = {
+  RESOLVED: 'policy.resolved',
+  COMMITMENT_EVALUATED: 'policy.commitment.evaluated',
+  DENIED: 'policy.denied'
+} as const;
+
+export function isPolicyDenial(event: CanonicalEvent): boolean {
+  return (
+    event.type === POLICY_EVENT_TYPES.DENIED ||
+    (event.type === POLICY_EVENT_TYPES.COMMITMENT_EVALUATED && event.data?.decision === 'deny')
+  );
+}
+
 export class ControlPlaneClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
@@ -65,7 +78,18 @@ export class ControlPlaneClient {
 
       const text = await response.text();
       if (!response.ok) {
-        throw new Error(`${method} ${path} failed (${response.status}): ${text}`);
+        let reasons: string[] = [];
+        let errorMessage = text;
+        try {
+          const errorBody = JSON.parse(text) as { message?: string; reasons?: string[] };
+          errorMessage = errorBody?.message ?? text;
+          reasons = errorBody?.reasons ?? [];
+        } catch {
+          // not JSON
+        }
+        throw new Error(
+          `${method} ${path} failed (${response.status}): ${errorMessage}${reasons.length ? ` [reasons: ${reasons.join(', ')}]` : ''}`
+        );
       }
       if (!text) {
         return undefined as T;

@@ -1,0 +1,25 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: fraud/high-value-new-device@1.0.0
+  slug: unanimous
+  name: Unanimous Approval
+spec:
+  defaults:
+    transactionAmount: 50000
+    deviceTrustScore: 0.2
+    accountAgeDays: 10
+    isVipCustomer: false
+    priorChargebacks: 3
+  overrides:
+    launch:
+      policyVersion: policy.fraud.unanimous
+      policyHints:
+        type: unanimous
+        description: Unanimous approval required for fraud review
+        threshold: 1.0
+        vetoEnabled: true
+        vetoThreshold: 1
+        minimumConfidence: 0.7
+        designatedRoles: []
+      ttlMs: 180000

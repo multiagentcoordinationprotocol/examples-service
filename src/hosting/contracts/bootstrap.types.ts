@@ -16,6 +16,8 @@ export interface BootstrapPayload {
     eventsEndpoint: string;
     apiKey?: string;
     timeoutMs: number;
+    runtimeUrl?: string;
+    secure?: boolean;
     joinMetadata: {
       transport: 'http';
       messageFormat: 'macp';
@@ -27,6 +29,17 @@ export interface BootstrapPayload {
     modeVersion: string;
     configurationVersion: string;
     policyVersion?: string;
+    policyHints?: {
+      type?: string;
+      description?: string;
+      threshold?: number;
+      vetoEnabled?: boolean;
+      criticalSeverityVetoes?: boolean;
+      vetoRoles?: string[];
+      vetoThreshold?: number;
+      minimumConfidence?: number;
+      designatedRoles?: string[];
+    };
     ttlMs: number;
     initiatorParticipantId?: string;
     tags?: string[];

@@ -56,7 +56,15 @@ spec:
     modeName: macp.mode.decision.v1
     modeVersion: 1.0.0
     configurationVersion: config.default
-    policyVersion: policy.lending
+    policyVersion: policy.lending.conservative
+    policyHints:
+      type: supermajority
+      description: Conservative lending policy — supermajority vote with mandatory evaluations and veto blocking
+      threshold: 0.67
+      vetoEnabled: true
+      vetoThreshold: 1
+      minimumConfidence: 0.6
+      designatedRoles: [risk, compliance]
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 

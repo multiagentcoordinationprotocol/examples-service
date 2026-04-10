@@ -1,9 +1,7 @@
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
 import { RegistryIndexService } from '../registry/registry-index.service';
 import { ControlPlaneClient, AgentMetricsEntry } from '../control-plane/control-plane.client';
-import { AppException } from '../errors/app-exception';
-import { ErrorCode } from '../errors/error-codes';
 
 export interface AgentProfile {
   agentRef: string;

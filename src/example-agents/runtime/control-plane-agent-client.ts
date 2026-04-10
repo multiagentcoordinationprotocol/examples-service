@@ -8,6 +8,17 @@ export interface AgentRuntimeContext {
   modeVersion: string;
   configurationVersion: string;
   policyVersion?: string;
+  policyHints?: {
+    type?: string;
+    description?: string;
+    threshold?: number;
+    vetoEnabled?: boolean;
+    criticalSeverityVetoes?: boolean;
+    vetoRoles?: string[];
+    vetoThreshold?: number;
+    minimumConfidence?: number;
+    designatedRoles?: string[];
+  };
   ttlMs: number;
   initiatorParticipantId?: string;
   participantId: string;
@@ -86,6 +97,7 @@ export function loadAgentRuntimeContext(): AgentRuntimeContext {
     modeVersion: readEnv('EXAMPLE_AGENT_MODE_VERSION', '1.0.0'),
     configurationVersion: readEnv('EXAMPLE_AGENT_CONFIGURATION_VERSION', 'config.default'),
     policyVersion: process.env.EXAMPLE_AGENT_POLICY_VERSION,
+    policyHints: parseJsonRecord(process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON) as AgentRuntimeContext['policyHints'],
     ttlMs: Number(readEnv('EXAMPLE_AGENT_SESSION_TTL_MS', '300000')),
     initiatorParticipantId: process.env.EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID,
     participantId: readEnv('EXAMPLE_AGENT_PARTICIPANT_ID'),
@@ -181,6 +193,19 @@ export function extractDecodedPayload(event: CanonicalEvent): JsonRecord {
   const data = event.data ?? {};
   const payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined) ?? {};
   return payload;
+}
+
+export const POLICY_EVENT_TYPES = {
+  RESOLVED: 'policy.resolved',
+  COMMITMENT_EVALUATED: 'policy.commitment.evaluated',
+  DENIED: 'policy.denied'
+} as const;
+
+export function isPolicyDenial(event: CanonicalEvent): boolean {
+  return (
+    event.type === POLICY_EVENT_TYPES.DENIED ||
+    (event.type === POLICY_EVENT_TYPES.COMMITMENT_EVALUATED && event.data?.decision === 'deny')
+  );
 }
 
 export function logAgent(message: string, details?: JsonRecord): void {

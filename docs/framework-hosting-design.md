@@ -78,8 +78,9 @@ Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BO
 | Hosting Service | `src/hosting/hosting.service.ts` | Two-phase resolve + attach orchestration |
 | Agent Profile Service | `src/catalog/agent-profile.service.ts` | Builds agent profiles with registry-scanned scenario coverage |
 | Agent Catalog | `src/example-agents/example-agent-catalog.service.ts` | Hard-coded agent definitions (4 agents) |
-| Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python SDK for workers |
-| Node Worker SDK | `agents/sdk/node/` | Shared Node SDK for workers |
+| Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python SDK: bootstrap, client, message builder, Participant abstraction, PolicyStrategy |
+| Node Worker SDK | `agents/sdk/node/` | Shared Node SDK: same contract plus Participant, PolicyStrategy, PolicyHints |
+| Policy Strategy | `src/example-agents/runtime/policy-strategy.ts` | Policy-aware decision logic for the coordinator (quorum, voting, veto) |
 
 ## Framework Workers
 
@@ -91,3 +92,28 @@ Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BO
 | Risk Agent | Custom (Node) | `src/example-agents/runtime/risk-decider.worker.ts` | `agents/manifests/risk-agent.json` |
 
 Each worker gracefully falls back when its framework library is not installed, preserving the same MACP message contract.
+
+## SDK Participant Abstraction
+
+All workers use the **Participant** SDK abstraction, which provides:
+- **Handler registration** — `@participant.on('Proposal')` (Python) or `participant.on('Proposal', handler)` (Node)
+- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.object()`, `ctx.actions.vote()`, `ctx.actions.commit()`
+- **Poll-based event loop** — `participant.run()` handles polling, terminal detection, and deadline enforcement
+- **Event-to-handler dispatch** — `proposal.created` → `'Proposal'`, `proposal.updated` → handler key from `messageType`
+
+The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicyStrategy(policyHints)`) for policy-driven:
+- **Quorum**: `unanimous` waits for all; `majority`/`supermajority` needs threshold; `none` needs ≥1 response
+- **Voting**: Approval rate vs threshold, with veto-blocking objections when `vetoEnabled` (configurable `vetoThreshold` per RFC-MACP-0012)
+- **Confidence filtering**: Evaluations below `minimumConfidence` are disqualified from voting
+- **Decision**: Maps signals to `approve` / `step_up` / `decline`
+- **Commitment**: Includes `designatedRoles` for commitment authority tracking
+
+## Policy Flow
+
+```
+scenario.yaml (policyVersion + policyHints)
+  → template override (optional)
+  → CompilerService → ExecutionRequest.session.policyHints
+  → BootstrapPayload.execution.policyHints
+  → Worker reads policyHints → PolicyStrategy.decide()
+```

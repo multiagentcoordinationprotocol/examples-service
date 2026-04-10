@@ -18,6 +18,17 @@ export interface LaunchSchemaResponse {
     modeVersion: string;
     configurationVersion: string;
     policyVersion?: string;
+    policyHints?: {
+      type?: string;
+      description?: string;
+      threshold?: number;
+      vetoEnabled?: boolean;
+      criticalSeverityVetoes?: boolean;
+      vetoRoles?: string[];
+      vetoThreshold?: number;
+      minimumConfidence?: number;
+      designatedRoles?: string[];
+    };
     ttlMs: number;
     initiatorParticipantId?: string;
   };
@@ -54,6 +65,17 @@ export interface ExecutionRequest {
     modeVersion: string;
     configurationVersion: string;
     policyVersion?: string;
+    policyHints?: {
+      type?: string;
+      description?: string;
+      threshold?: number;
+      vetoEnabled?: boolean;
+      criticalSeverityVetoes?: boolean;
+      vetoRoles?: string[];
+      vetoThreshold?: number;
+      minimumConfidence?: number;
+      designatedRoles?: string[];
+    };
     ttlMs: number;
     initiatorParticipantId?: string;
     participants: Array<{

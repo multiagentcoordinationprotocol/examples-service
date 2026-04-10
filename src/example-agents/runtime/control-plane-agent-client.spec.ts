@@ -7,6 +7,8 @@ import {
   loadAgentRuntimeContext,
   parseJsonRecord,
   parseStringArray,
+  isPolicyDenial,
+  POLICY_EVENT_TYPES,
   CanonicalEvent
 } from './control-plane-agent-client';
 
@@ -101,6 +103,48 @@ describe('control-plane-agent-client', () => {
       expect(context.configurationVersion).toBe('config.default');
       expect(context.ttlMs).toBe(300000);
     });
+
+    it('parses policyHints from EXAMPLE_AGENT_POLICY_HINTS_JSON', () => {
+      process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON = JSON.stringify({
+        type: 'majority',
+        threshold: 0.5,
+        vetoEnabled: true
+      });
+      const context = loadAgentRuntimeContext();
+      expect(context.policyHints).toEqual({
+        type: 'majority',
+        threshold: 0.5,
+        vetoEnabled: true
+      });
+      delete process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON;
+    });
+
+    it('parses RFC-MACP-0012 fields from EXAMPLE_AGENT_POLICY_HINTS_JSON', () => {
+      process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON = JSON.stringify({
+        type: 'supermajority',
+        threshold: 0.67,
+        vetoEnabled: true,
+        vetoThreshold: 2,
+        minimumConfidence: 0.6,
+        designatedRoles: ['risk', 'compliance']
+      });
+      const context = loadAgentRuntimeContext();
+      expect(context.policyHints).toEqual({
+        type: 'supermajority',
+        threshold: 0.67,
+        vetoEnabled: true,
+        vetoThreshold: 2,
+        minimumConfidence: 0.6,
+        designatedRoles: ['risk', 'compliance']
+      });
+      delete process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON;
+    });
+
+    it('returns undefined-like policyHints when env var not set', () => {
+      delete process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON;
+      const context = loadAgentRuntimeContext();
+      expect(context.policyHints).toEqual({});
+    });
   });
 
   describe('buildProtoEnvelope', () => {
@@ -166,6 +210,44 @@ describe('control-plane-agent-client', () => {
     it('extracts sender from event data', () => {
       const event: CanonicalEvent = { seq: 1, type: 'proposal.updated', data: { sender: 'fraud-agent' } };
       expect(extractSender(event)).toBe('fraud-agent');
+    });
+  });
+
+  describe('POLICY_EVENT_TYPES', () => {
+    it('has correct event type constants', () => {
+      expect(POLICY_EVENT_TYPES.RESOLVED).toBe('policy.resolved');
+      expect(POLICY_EVENT_TYPES.COMMITMENT_EVALUATED).toBe('policy.commitment.evaluated');
+      expect(POLICY_EVENT_TYPES.DENIED).toBe('policy.denied');
+    });
+  });
+
+  describe('isPolicyDenial', () => {
+    it('returns true for policy.denied event', () => {
+      const event: CanonicalEvent = { seq: 1, type: 'policy.denied', data: { reasons: ['quorum not met'] } };
+      expect(isPolicyDenial(event)).toBe(true);
+    });
+
+    it('returns true for policy.commitment.evaluated with deny decision', () => {
+      const event: CanonicalEvent = {
+        seq: 1,
+        type: 'policy.commitment.evaluated',
+        data: { decision: 'deny', reasons: ['threshold not met'] }
+      };
+      expect(isPolicyDenial(event)).toBe(true);
+    });
+
+    it('returns false for policy.commitment.evaluated with allow decision', () => {
+      const event: CanonicalEvent = {
+        seq: 1,
+        type: 'policy.commitment.evaluated',
+        data: { decision: 'allow' }
+      };
+      expect(isPolicyDenial(event)).toBe(false);
+    });
+
+    it('returns false for unrelated event types', () => {
+      const event: CanonicalEvent = { seq: 1, type: 'proposal.created' };
+      expect(isPolicyDenial(event)).toBe(false);
     });
   });
 

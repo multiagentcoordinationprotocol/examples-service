@@ -25,6 +25,13 @@ const mockScenario: ScenarioVersionFile = {
       modeVersion: '1.0.0',
       configurationVersion: 'config.default',
       policyVersion: 'policy.default',
+      policyHints: {
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      },
       ttlMs: 300000,
       initiatorParticipantId: 'agent-1',
       participants: [{ id: 'agent-1', role: 'tester', agentRef: 'agent-1' }],
@@ -99,6 +106,13 @@ describe('CompilerService', () => {
       expect(result.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
       expect(result.executionRequest.session.modeName).toBe('test.mode');
       expect(result.executionRequest.session.policyVersion).toBe('policy.default');
+      expect(result.executionRequest.session.policyHints).toEqual({
+        type: 'none',
+        description: 'No governance constraints',
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      });
       expect(result.executionRequest.session.ttlMs).toBe(300000);
       expect(result.executionRequest.session.participants).toHaveLength(1);
       expect(result.executionRequest.session.context).toEqual({ amount: 500, isVip: false });
@@ -184,6 +198,48 @@ describe('CompilerService', () => {
       });
 
       expect(result.executionRequest.session.ttlMs).toBe(180000);
+    });
+
+    it('should apply template policyVersion and policyHints override', async () => {
+      const policyTemplate: ScenarioTemplateFile = {
+        apiVersion: 'scenarios.macp.dev/v1',
+        kind: 'ScenarioTemplate',
+        metadata: { scenarioVersion: 'fraud/test@1.0.0', slug: 'majority-veto', name: 'Majority Veto' },
+        spec: {
+          overrides: {
+            launch: {
+              policyVersion: 'policy.fraud.majority-veto',
+              policyHints: {
+                type: 'majority',
+                threshold: 0.5,
+                vetoEnabled: true,
+                vetoThreshold: 1,
+                minimumConfidence: 0.0,
+                designatedRoles: []
+              }
+            }
+          }
+        }
+      };
+      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
+      mockIndex.getTemplate.mockResolvedValue(policyTemplate);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        templateId: 'majority-veto',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.executionRequest.session.policyVersion).toBe('policy.fraud.majority-veto');
+      expect(result.executionRequest.session.policyHints).toEqual({
+        type: 'majority',
+        description: 'No governance constraints',
+        threshold: 0.5,
+        vetoEnabled: true,
+        vetoThreshold: 1,
+        minimumConfidence: 0.0,
+        designatedRoles: []
+      });
     });
 
     it('should merge template metadata overrides', async () => {

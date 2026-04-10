@@ -168,7 +168,7 @@ export class LaunchSupervisor implements OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    for (const [key, record] of this.processes.entries()) {
+    for (const [, record] of this.processes.entries()) {
       const logPrefix = `[${record.manifest.framework}:${record.handle.participantId}:${record.handle.runId}]`;
       this.logger.log(`${logPrefix} terminating process on shutdown (pid=${record.child.pid ?? 'n/a'})`);
       try {

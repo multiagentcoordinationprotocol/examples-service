@@ -58,6 +58,13 @@ describe('Launch (e2e)', () => {
           expect(res.body.runtime).toEqual({ kind: 'rust', version: 'v1' });
           expect(res.body.launchSummary.ttlMs).toBe(300000);
           expect(res.body.launchSummary.policyVersion).toBe('policy.default');
+          expect(res.body.launchSummary.policyHints).toEqual({
+            type: 'none',
+            description: 'Default policy — no additional governance constraints',
+            vetoThreshold: 1,
+            minimumConfidence: 0,
+            designatedRoles: []
+          });
           expect(res.body.expectedDecisionKinds).toEqual(['approve', 'step_up', 'decline']);
         });
     });
@@ -115,6 +122,13 @@ describe('Launch (e2e)', () => {
           expect(res.body.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
           expect(res.body.executionRequest.session.modeName).toBe('macp.mode.decision.v1');
           expect(res.body.executionRequest.session.policyVersion).toBe('policy.default');
+          expect(res.body.executionRequest.session.policyHints).toEqual({
+            type: 'none',
+            description: 'Default policy — no additional governance constraints',
+            vetoThreshold: 1,
+            minimumConfidence: 0,
+            designatedRoles: []
+          });
           expect(res.body.executionRequest.session.participants).toHaveLength(4);
           expect(res.body.executionRequest.session.context.transactionAmount).toBe(3200);
           expect(res.body.executionRequest.session.context.isVipCustomer).toBe(true);

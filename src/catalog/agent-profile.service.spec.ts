@@ -1,9 +1,12 @@
 import { AgentProfileService } from './agent-profile.service';
+import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
+import { RegistryIndexService } from '../registry/registry-index.service';
+import { ControlPlaneClient } from '../control-plane/control-plane.client';
 
 describe('AgentProfileService', () => {
   let service: AgentProfileService;
-  let mockAgentCatalog: any;
-  let mockRegistryIndex: any;
+  let mockAgentCatalog: Partial<ExampleAgentCatalogService>;
+  let mockRegistryIndex: Partial<RegistryIndexService>;
 
   const mockDefinitions = [
     {
@@ -115,7 +118,11 @@ describe('AgentProfileService', () => {
       getAgentMetrics: jest.fn().mockResolvedValue([])
     };
 
-    service = new AgentProfileService(mockAgentCatalog, mockRegistryIndex, mockControlPlaneClient as any);
+    service = new AgentProfileService(
+      mockAgentCatalog as ExampleAgentCatalogService,
+      mockRegistryIndex as RegistryIndexService,
+      mockControlPlaneClient as unknown as ControlPlaneClient
+    );
   });
 
   describe('listProfiles', () => {
