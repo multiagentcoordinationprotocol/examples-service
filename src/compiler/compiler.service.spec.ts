@@ -314,6 +314,133 @@ describe('CompilerService', () => {
     });
   });
 
+  describe('compile - commitments', () => {
+    it('should omit session.commitments when scenario declares none', async () => {
+      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.executionRequest.session.commitments).toBeUndefined();
+    });
+
+    it('should propagate scenario commitments to session.commitments', async () => {
+      const scenarioWithCommitments: ScenarioVersionFile = {
+        ...mockScenario,
+        spec: {
+          ...mockScenario.spec,
+          launch: {
+            ...mockScenario.spec.launch,
+            commitments: [
+              {
+                id: 'fraud-risk-assessed',
+                title: 'Fraud risk assessed',
+                description: 'Fraud specialist evaluated signals.',
+                requiredRoles: ['fraud'],
+                policyRef: 'policy.default'
+              },
+              {
+                id: 'decision-finalized',
+                title: 'Decision finalized',
+                requiredRoles: ['risk']
+              }
+            ]
+          }
+        }
+      };
+      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.executionRequest.session.commitments).toEqual([
+        {
+          id: 'fraud-risk-assessed',
+          title: 'Fraud risk assessed',
+          description: 'Fraud specialist evaluated signals.',
+          requiredRoles: ['fraud'],
+          policyRef: 'policy.default'
+        },
+        {
+          id: 'decision-finalized',
+          title: 'Decision finalized',
+          requiredRoles: ['risk']
+        }
+      ]);
+    });
+
+    it('should allow template overrides to replace commitments', async () => {
+      const scenarioWithCommitments: ScenarioVersionFile = {
+        ...mockScenario,
+        spec: {
+          ...mockScenario.spec,
+          launch: {
+            ...mockScenario.spec.launch,
+            commitments: [{ id: 'base-commitment', title: 'Base' }]
+          }
+        }
+      };
+      const overrideTemplate: ScenarioTemplateFile = {
+        apiVersion: 'scenarios.macp.dev/v1',
+        kind: 'ScenarioTemplate',
+        metadata: { scenarioVersion: 'fraud/test@1.0.0', slug: 'override', name: 'Override' },
+        spec: {
+          overrides: {
+            launch: {
+              commitments: [
+                { id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }
+              ]
+            }
+          }
+        }
+      };
+      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
+      mockIndex.getTemplate.mockResolvedValue(overrideTemplate);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        templateId: 'override',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.executionRequest.session.commitments).toEqual([
+        { id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }
+      ]);
+    });
+
+    it('should substitute input placeholders inside commitments', async () => {
+      const scenarioWithCommitments: ScenarioVersionFile = {
+        ...mockScenario,
+        spec: {
+          ...mockScenario.spec,
+          launch: {
+            ...mockScenario.spec.launch,
+            commitments: [
+              {
+                id: 'review-{{ inputs.amount }}',
+                title: 'Review amount {{ inputs.amount }}'
+              }
+            ]
+          }
+        }
+      };
+      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 500, isVip: true }
+      });
+
+      expect(result.executionRequest.session.commitments).toEqual([
+        { id: 'review-500', title: 'Review amount 500' }
+      ]);
+    });
+  });
+
   describe('compile - display', () => {
     it('should include display metadata', async () => {
       mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);

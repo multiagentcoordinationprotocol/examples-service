@@ -173,8 +173,7 @@ export function buildProtoEnvelope(typeName: string, value: JsonRecord): JsonRec
 }
 
 export function extractProposalId(event: CanonicalEvent): string | undefined {
-  const data = event.data ?? {};
-  const payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined) ?? {};
+  const payload = extractDecodedPayload(event);
   const proposalId = payload.proposalId ?? payload.proposal_id ?? event.subject?.id;
   return typeof proposalId === 'string' ? proposalId : undefined;
 }
@@ -191,7 +190,13 @@ export function extractSender(event: CanonicalEvent): string | undefined {
 
 export function extractDecodedPayload(event: CanonicalEvent): JsonRecord {
   const data = event.data ?? {};
-  const payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined) ?? {};
+  let payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined);
+  if (!payload) {
+    // Fall back to payloadDescriptor.proto.value (real runtime format)
+    const descriptor = data.payloadDescriptor as JsonRecord | undefined;
+    const proto = descriptor?.proto as JsonRecord | undefined;
+    payload = (proto?.value as JsonRecord | undefined) ?? {};
+  }
   return payload;
 }
 

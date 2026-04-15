@@ -1,0 +1,8 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioTemplate
+metadata:
+  scenarioVersion: __PACK_SLUG__/__SCENARIO_SLUG__@__VERSION__
+  slug: default
+  name: Default
+spec:
+  defaults: {}

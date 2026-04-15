@@ -21,13 +21,24 @@ npm run lint:fix           # ESLint auto-fix
 npm run format             # Prettier formatting
 ```
 
+### Scenario authoring CLI
+
+```bash
+npm run scenario:new -- <pack> <slug>           # Scaffold a new scenario directory tree
+npm run scenario:validate -- <scenario.yaml>    # Structure, schema, fixtures, placeholders, agentRefs
+npm run scenario:dry-run -- <ref> --inputs <f>  # Compile offline; prints ExecutionRequest as JSON
+npm run scenario:lint -- packs                  # Static checks across one or more packs
+```
+
+CLI source: `scripts/scenario.ts` (dispatcher) + `scripts/scenario/{validate,dry-run,new,lint}.ts`. Reuses `FileRegistryLoader`, `RegistryIndexService`, `CompilerService`, `createScenarioAjv()` (`src/compiler/ajv-factory.ts`), and `ExampleAgentCatalogService`. See `docs/scenario-cli.md`.
+
 ### Testing
 
 ```bash
-npm test                                    # Unit tests (Jest, 242+ tests across 28 spec files)
+npm test                                    # Unit tests (Jest, 326+ tests across 31 spec files)
 npm test -- --testPathPattern=compiler      # Run a single test file by name
-npm run test:e2e                            # E2E tests (supertest, 31 tests)
-npm run test:integration                    # Integration tests with mock control plane (60 tests)
+npm run test:e2e                            # E2E tests (supertest, 32 tests)
+npm run test:integration                    # Integration tests with mock control plane (100 tests)
 npm run test:integration:docker             # Integration tests against Docker control plane
 npm run test:integration:remote             # Integration tests against remote control plane
 ```
@@ -174,7 +185,17 @@ packs/{pack-slug}/
     templates/
       default.yaml                       # Default template
       *.yaml                             # Additional template variants
+    data/                                # Bulk data referenced via !include (optional)
+    fixtures/                            # Sample inputs used by scenario:validate / dry-run (optional)
+packs/_shared/                           # Cross-pack fragments — loader skips _-prefixed dirs
+  participants/                          # 4-agent rosters per use-case
+  commitments/                           # Standard commitment sets
+  policy-hints/                          # Standard policy hint blocks
 ```
+
+### `!include` loader extension
+
+`scenario.yaml`, `pack.yaml`, and any template can use the `!include <relative-path>` YAML tag to inline a sibling YAML or JSON file at load time. Implementation: `src/registry/include-resolver.ts`, wired in `FileRegistryLoader.parseYamlFile`. Path resolution is relative to the file containing the tag; resolved paths must stay inside `PACKS_DIR` (escapes throw `INVALID_PACK_DATA`); recursive includes are followed; cycles detected. Supported targets: `.yaml`, `.yml`, `.json`. The loader skips any top-level directory under `PACKS_DIR` whose name starts with `_`, so `_shared/` is invisible to pack discovery but reachable by includes.
 
 Templates use `{{ inputs.fieldName }}` for variable substitution. Exact placeholders preserve types; embedded placeholders coerce to string. Default merge precedence: schema defaults < template defaults < user inputs.
 

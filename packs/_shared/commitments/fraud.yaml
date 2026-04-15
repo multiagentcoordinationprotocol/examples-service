@@ -1,0 +1,15 @@
+- id: fraud-risk-assessed
+  title: Fraud risk assessed
+  description: Fraud specialist has evaluated transaction signals and recorded a risk verdict.
+  requiredRoles: [fraud]
+  policyRef: policy.default
+- id: compliance-reviewed
+  title: Compliance review complete
+  description: Compliance reviewer has cleared the transaction against regulatory constraints.
+  requiredRoles: [compliance]
+  policyRef: policy.default
+- id: decision-finalized
+  title: Decision finalized
+  description: Risk coordinator has reconciled specialist inputs and committed a final decision.
+  requiredRoles: [risk]
+  policyRef: policy.default

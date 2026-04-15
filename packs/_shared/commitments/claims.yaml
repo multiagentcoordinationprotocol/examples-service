@@ -1,0 +1,15 @@
+- id: claim-validated
+  title: Claim validated
+  description: Claims validator has confirmed documentation and policy coverage for the incident.
+  requiredRoles: [claims-validator]
+  policyRef: policy.claims.majority
+- id: compliance-reviewed
+  title: Compliance review complete
+  description: Compliance reviewer has confirmed the claim meets regulatory handling requirements.
+  requiredRoles: [compliance-reviewer]
+  policyRef: policy.claims.majority
+- id: claim-decision
+  title: Claim decision finalized
+  description: Risk coordinator has reconciled inputs and issued an approve / investigate / deny decision.
+  requiredRoles: [risk]
+  policyRef: policy.claims.majority

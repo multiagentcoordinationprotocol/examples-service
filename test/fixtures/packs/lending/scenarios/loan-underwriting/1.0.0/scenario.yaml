@@ -82,6 +82,15 @@ spec:
         role: risk
         agentRef: risk-agent
 
+    commitments:
+      - id: credit-evaluated
+        title: Credit evaluation complete
+        requiredRoles: [credit-analyst]
+        policyRef: policy.lending.conservative
+      - id: underwriting-decision
+        title: Underwriting decision finalized
+        requiredRoles: [risk]
+
     contextTemplate:
       applicantId: "{{ inputs.applicantId }}"
       loanAmount: "{{ inputs.loanAmount }}"

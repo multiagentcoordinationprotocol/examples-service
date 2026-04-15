@@ -51,28 +51,13 @@ spec:
     modeVersion: 1.0.0
     configurationVersion: config.default
     policyVersion: policy.default
-    policyHints:
-      type: none
-      description: Default policy — no additional governance constraints
-      vetoThreshold: 1
-      minimumConfidence: 0.0
-      designatedRoles: []
+    policyHints: !include ../../../../_shared/policy-hints/default.yaml
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 
-    participants:
-      - id: fraud-agent
-        role: fraud
-        agentRef: fraud-agent
-      - id: growth-agent
-        role: growth
-        agentRef: growth-agent
-      - id: compliance-agent
-        role: compliance
-        agentRef: compliance-agent
-      - id: risk-agent
-        role: risk
-        agentRef: risk-agent
+    participants: !include ../../../../_shared/participants/4-agent-fraud.yaml
+
+    commitments: !include ../../../../_shared/commitments/fraud.yaml
 
     contextTemplate:
       customerId: "{{ inputs.customerId }}"

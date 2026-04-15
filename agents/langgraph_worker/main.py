@@ -35,6 +35,7 @@ def main() -> int:
             recommendation=graph_output.get('recommendation', 'REVIEW'),
             confidence=graph_output.get('confidence', 0.5),
             reason=graph_output.get('reason', 'fraud graph evaluation'),
+            token_usage=graph_output.get('token_usage'),
         )
 
         log_agent('evaluation sent', proposalId=ctx.proposal_id)

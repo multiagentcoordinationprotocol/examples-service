@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpStatus } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
 import { AppConfigService } from '../config/app-config.service';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
@@ -15,6 +14,7 @@ import {
   ScenarioVersionEntry,
   ScenarioVersionFile
 } from '../contracts/registry';
+import { loadYamlWithIncludes } from './include-resolver';
 
 @Injectable()
 export class FileRegistryLoader {
@@ -37,6 +37,7 @@ export class FileRegistryLoader {
     }
 
     for (const entry of entries) {
+      if (entry.startsWith('_')) continue;
       const packDir = path.join(this.packsDir, entry);
       const stat = await fs.stat(packDir).catch(() => null);
       if (!stat?.isDirectory()) continue;
@@ -67,8 +68,7 @@ export class FileRegistryLoader {
   }
 
   private async loadPackFile(filePath: string): Promise<PackFile> {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const data = this.parseYaml(content, filePath) as PackFile;
+    const data = this.parseYamlFile(filePath) as PackFile;
 
     if (data.apiVersion !== 'scenarios.macp.dev/v1') {
       throw new AppException(
@@ -141,8 +141,7 @@ export class FileRegistryLoader {
   }
 
   private async loadScenarioFile(filePath: string): Promise<ScenarioVersionFile> {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const data = this.parseYaml(content, filePath) as ScenarioVersionFile;
+    const data = this.parseYamlFile(filePath) as ScenarioVersionFile;
 
     if (data.apiVersion !== 'scenarios.macp.dev/v1') {
       throw new AppException(
@@ -172,10 +171,9 @@ export class FileRegistryLoader {
       if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue;
 
       const filePath = path.join(templatesDir, file);
-      const content = await fs.readFile(filePath, 'utf-8');
-      const data = this.parseYaml(content, filePath) as ScenarioTemplateFile;
+      const data = this.parseYamlFile(filePath) as ScenarioTemplateFile;
 
-      if (data.kind === 'ScenarioTemplate' && data.metadata?.slug) {
+      if (data?.kind === 'ScenarioTemplate' && data.metadata?.slug) {
         templates.set(data.metadata.slug, data);
       }
     }
@@ -183,10 +181,11 @@ export class FileRegistryLoader {
     return templates;
   }
 
-  private parseYaml(content: string, filePath: string): unknown {
+  private parseYamlFile(filePath: string): unknown {
     try {
-      return yaml.load(content, { schema: yaml.JSON_SCHEMA });
+      return loadYamlWithIncludes(filePath, this.packsDir);
     } catch (err) {
+      if (err instanceof AppException) throw err;
       throw new AppException(
         ErrorCode.INVALID_PACK_DATA,
         `invalid YAML in ${filePath}: ${err instanceof Error ? err.message : String(err)}`,

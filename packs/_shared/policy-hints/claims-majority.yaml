@@ -1,0 +1,7 @@
+type: majority
+description: Simple majority vote with 2-voter quorum for claims review
+threshold: 0.5
+vetoEnabled: false
+vetoThreshold: 1
+minimumConfidence: 0.0
+designatedRoles: []

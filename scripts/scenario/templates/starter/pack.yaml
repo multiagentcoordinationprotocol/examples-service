@@ -1,0 +1,7 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioPack
+metadata:
+  slug: __PACK_SLUG__
+  name: __PACK_NAME__
+  description: TODO — describe what this pack demonstrates.
+  tags: []

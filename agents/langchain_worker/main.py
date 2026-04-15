@@ -34,6 +34,7 @@ def main() -> int:
             recommendation=chain_output.get('recommendation', 'REVIEW'),
             confidence=chain_output.get('confidence', 0.5),
             reason=chain_output.get('reason', 'growth chain evaluation'),
+            token_usage=chain_output.get('token_usage'),
         )
 
         log_agent('evaluation sent', proposalId=ctx.proposal_id)

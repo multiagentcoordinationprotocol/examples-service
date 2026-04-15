@@ -1,0 +1,12 @@
+- id: fraud-agent
+  role: fraud
+  agentRef: fraud-agent
+- id: growth-agent
+  role: credit-analyst
+  agentRef: growth-agent
+- id: compliance-agent
+  role: compliance
+  agentRef: compliance-agent
+- id: risk-agent
+  role: risk
+  agentRef: risk-agent

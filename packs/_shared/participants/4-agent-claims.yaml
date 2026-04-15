@@ -1,0 +1,12 @@
+- id: fraud-agent
+  role: claims-validator
+  agentRef: fraud-agent
+- id: growth-agent
+  role: customer-advocate
+  agentRef: growth-agent
+- id: compliance-agent
+  role: compliance-reviewer
+  agentRef: compliance-agent
+- id: risk-agent
+  role: risk
+  agentRef: risk-agent

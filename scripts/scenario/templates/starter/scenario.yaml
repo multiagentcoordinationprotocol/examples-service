@@ -1,0 +1,61 @@
+apiVersion: scenarios.macp.dev/v1
+kind: ScenarioVersion
+metadata:
+  pack: __PACK_SLUG__
+  scenario: __SCENARIO_SLUG__
+  version: __VERSION__
+  name: __SCENARIO_NAME__
+  summary: TODO — describe what this scenario demonstrates.
+  tags: []
+spec:
+  runtime:
+    kind: rust
+    version: v1
+
+  inputs:
+    schema:
+      type: object
+      properties:
+        sampleField:
+          type: string
+          default: hello
+      required: [sampleField]
+
+  launch:
+    modeName: macp.mode.decision.v1
+    modeVersion: 1.0.0
+    configurationVersion: config.default
+    policyVersion: policy.default
+    policyHints: !include ../../../../_shared/policy-hints/default.yaml
+    ttlMs: 300000
+    initiatorParticipantId: risk-agent
+
+    participants: !include ../../../../_shared/participants/4-agent-fraud.yaml
+
+    contextTemplate:
+      sampleField: "{{ inputs.sampleField }}"
+
+    metadataTemplate:
+      demoType: __SCENARIO_SLUG__
+
+    kickoffTemplate:
+      - from: risk-agent
+        to: [fraud-agent, growth-agent, compliance-agent]
+        kind: proposal
+        messageType: Proposal
+        payloadEnvelope:
+          encoding: json
+          json:
+            proposal_id: "{{ inputs.sampleField }}-initial"
+            option: evaluate
+            rationale: TODO
+
+  execution:
+    tags: [demo]
+    requester:
+      actorId: example-service
+      actorType: service
+
+  outputs:
+    expectedDecisionKinds: [approve, decline]
+    expectedSignals: []

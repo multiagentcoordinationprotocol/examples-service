@@ -58,6 +58,14 @@ export interface RuntimeSelectionTemplate {
   version?: string;
 }
 
+export interface CommitmentDefinition {
+  id: string;
+  title: string;
+  description?: string;
+  requiredRoles?: string[];
+  policyRef?: string;
+}
+
 export interface ScenarioVersionFile {
   apiVersion: 'scenarios.macp.dev/v1';
   kind: 'ScenarioVersion';
@@ -93,6 +101,7 @@ export interface ScenarioVersionFile {
       ttlMs: number;
       initiatorParticipantId?: string;
       participants: ParticipantTemplate[];
+      commitments?: CommitmentDefinition[];
       contextTemplate?: Record<string, unknown>;
       kickoffTemplate?: KickoffTemplate[];
       metadataTemplate?: Record<string, unknown>;

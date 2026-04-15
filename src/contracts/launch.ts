@@ -1,5 +1,7 @@
 import { HostedExampleAgent, ParticipantAgentBinding, ExampleAgentSummary } from './example-agents';
-import { KickoffKind, PayloadEncoding, RuntimeSelectionTemplate } from './registry';
+import { CommitmentDefinition, KickoffKind, PayloadEncoding, RuntimeSelectionTemplate } from './registry';
+
+export type { CommitmentDefinition };
 
 export interface LaunchSchemaResponse {
   scenarioRef: string;
@@ -84,6 +86,7 @@ export interface ExecutionRequest {
       transportIdentity?: string;
       metadata?: Record<string, unknown>;
     }>;
+    commitments?: CommitmentDefinition[];
     context?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   };

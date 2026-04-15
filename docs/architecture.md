@@ -85,8 +85,8 @@ POST /launch/compile
     → Load scenario + optional template
     → Merge defaults: schema < template < user inputs
     → Validate inputs against JSON Schema (AJV)
-    → Substitute {{ inputs.* }} in context/metadata/kickoff templates
-    → Build ExecutionRequest
+    → Substitute {{ inputs.* }} in context/metadata/kickoff/commitments templates
+    → Build ExecutionRequest (carries session.commitments[] when scenario declares them)
 ```
 
 ### 4. Run Example (Full Showcase Flow)

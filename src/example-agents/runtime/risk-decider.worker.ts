@@ -49,7 +49,7 @@ async function main(): Promise<void> {
         return;
       }
 
-      if (event.type === 'proposal.created' && !proposalId) {
+      if (!proposalId && (event.type === 'proposal.created' || (event.type === 'message.sent' && extractMessageType(event) === 'Proposal'))) {
         proposalId = extractProposalId(event);
         if (proposalId) {
           logAgent('proposal observed', { proposalId, seq: event.seq });
@@ -57,7 +57,8 @@ async function main(): Promise<void> {
         continue;
       }
 
-      if (event.type !== 'proposal.updated' || !proposalId) continue;
+      if (!proposalId) continue;
+      if (event.type !== 'proposal.updated' && !(event.type === 'message.received' || event.type === 'message.sent')) continue;
 
       const eventProposalId = extractProposalId(event);
       if (!eventProposalId || eventProposalId !== proposalId) continue;
@@ -99,41 +100,49 @@ async function main(): Promise<void> {
         specialistCount: signals.size
       });
 
-      await client.sendMessage(context.runId, {
-        from: context.participantId,
-        to: recipients,
-        messageType: 'Vote',
-        payloadEnvelope: buildProtoEnvelope('macp.modes.decision.v1.VotePayload', {
-          proposal_id: proposalId,
-          vote: decision.vote,
-          reason: decision.reason
-        }),
-        metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
-      });
+      try {
+        await client.sendMessage(context.runId, {
+          from: context.participantId,
+          to: recipients,
+          messageType: 'Vote',
+          payloadEnvelope: buildProtoEnvelope('macp.modes.decision.v1.VotePayload', {
+            proposal_id: proposalId,
+            vote: decision.vote,
+            reason: decision.reason
+          }),
+          metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
+        });
+        logAgent('vote sent', { proposalId, vote: decision.vote });
+      } catch (voteError) {
+        logAgent('vote send failed (continuing)', { error: voteError instanceof Error ? voteError.message : String(voteError) });
+      }
 
       await new Promise((resolve) => setTimeout(resolve, 250));
 
-      await client.sendMessage(context.runId, {
-        from: context.participantId,
-        to: recipients,
-        messageType: 'Commitment',
-        payloadEnvelope: buildProtoEnvelope('macp.v1.CommitmentPayload', {
-          commitment_id: `${proposalId}-final`,
-          action: decision.action,
-          outcome_positive: inferOutcomePositive(decision.action),
-          authority_scope: 'transaction_review',
-          reason: decision.reason,
-          mode_version: context.modeVersion,
-          policy_version: context.policyVersion ?? '',
-          configuration_version: context.configurationVersion,
-          designated_roles: context.policyHints?.designatedRoles ?? [],
-          veto_threshold: context.policyHints?.vetoThreshold ?? 1,
-          minimum_confidence: context.policyHints?.minimumConfidence ?? 0.0
-        }),
-        metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
-      });
-
-      logAgent('commitment sent, awaiting policy evaluation', { proposalId, action: decision.action });
+      try {
+        await client.sendMessage(context.runId, {
+          from: context.participantId,
+          to: recipients,
+          messageType: 'Commitment',
+          payloadEnvelope: buildProtoEnvelope('macp.v1.CommitmentPayload', {
+            commitment_id: `${proposalId}-final`,
+            action: decision.action,
+            outcome_positive: inferOutcomePositive(decision.action),
+            authority_scope: 'transaction_review',
+            reason: decision.reason,
+            mode_version: context.modeVersion,
+            policy_version: context.policyVersion ?? '',
+            configuration_version: context.configurationVersion,
+            designated_roles: context.policyHints?.designatedRoles ?? [],
+            veto_threshold: context.policyHints?.vetoThreshold ?? 1,
+            minimum_confidence: context.policyHints?.minimumConfidence ?? 0.0
+          }),
+          metadata: { framework: context.framework, agentRef: context.agentRef, hostKind: 'node-process' }
+        });
+        logAgent('commitment sent, awaiting policy evaluation', { proposalId, action: decision.action });
+      } catch (commitError) {
+        logAgent('commitment send failed', { error: commitError instanceof Error ? commitError.message : String(commitError) });
+      }
 
       // Wait for policy evaluation after commitment
       let policyResolved = false;

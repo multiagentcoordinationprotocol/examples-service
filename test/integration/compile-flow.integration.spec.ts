@@ -59,6 +59,27 @@ describe('Compile Flow (integration)', () => {
       const er = (result as any).executionRequest;
       expect(er.session.ttlMs).toBe(180000);
     });
+
+    it('propagates scenario commitments onto session.commitments', async () => {
+      const result = await ctx.client.compile(fraudScenarioCompileRequest());
+      const er = (result as any).executionRequest;
+
+      expect(er.session.commitments).toEqual([
+        {
+          id: 'fraud-risk-assessed',
+          title: 'Fraud risk assessed',
+          description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
+          requiredRoles: ['fraud'],
+          policyRef: 'policy.default'
+        },
+        {
+          id: 'decision-finalized',
+          title: 'Decision finalized',
+          description: 'Risk coordinator has reconciled inputs and committed a final decision.',
+          requiredRoles: ['risk']
+        }
+      ]);
+    });
   });
 
   describe('POST /launch/compile - validation errors', () => {
@@ -96,22 +117,36 @@ describe('Compile Flow (integration)', () => {
   });
 
   describe('POST /launch/compile - cross-pack', () => {
-    it('compiles lending scenario', async () => {
+    it('compiles lending scenario with commitments', async () => {
       const result = await ctx.client.compile(lendingScenarioCompileRequest());
       const er = (result as any).executionRequest;
       expect(er.mode).toBe('sandbox');
       expect(er.session.participants).toHaveLength(4);
       expect(er.session.context.loanAmount).toBe(25000);
       expect(er.session.context.creditScore).toBe(680);
+      expect(er.session.commitments).toEqual([
+        {
+          id: 'credit-evaluated',
+          title: 'Credit evaluation complete',
+          requiredRoles: ['credit-analyst'],
+          policyRef: 'policy.lending.conservative'
+        },
+        {
+          id: 'underwriting-decision',
+          title: 'Underwriting decision finalized',
+          requiredRoles: ['risk']
+        }
+      ]);
     });
 
-    it('compiles claims scenario', async () => {
+    it('compiles claims scenario and omits commitments when scenario declares none', async () => {
       const result = await ctx.client.compile(claimsScenarioCompileRequest());
       const er = (result as any).executionRequest;
       expect(er.mode).toBe('sandbox');
       expect(er.session.participants).toHaveLength(4);
       expect(er.session.context.claimAmount).toBe(8500);
       expect(er.session.context.incidentSeverity).toBe('moderate');
+      expect(er.session.commitments).toBeUndefined();
     });
   });
 });

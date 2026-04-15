@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   AgentHostAdapter,
   PrepareLaunchInput,
@@ -27,7 +29,7 @@ export class CustomHostAdapter implements AgentHostAdapter {
   prepareLaunch(input: PrepareLaunchInput): PreparedLaunch {
     const { manifest, bootstrap } = input;
     const cwd = manifest.host?.cwd ?? process.cwd();
-    const entrypoint = manifest.entrypoint.value;
+    const entrypoint = this.resolveEntrypoint(manifest.entrypoint.value, manifest.entrypoint.type, cwd);
 
     const isNode = manifest.entrypoint.type === 'node_file';
     const command = isNode
@@ -48,7 +50,29 @@ export class CustomHostAdapter implements AgentHostAdapter {
       MACP_LOG_LEVEL: 'info',
       MACP_FRAMEWORK: 'custom',
       MACP_PARTICIPANT_ID: bootstrap.participant.participantId,
-      MACP_RUN_ID: bootstrap.run.runId
+      MACP_RUN_ID: bootstrap.run.runId,
+      // Legacy env vars required by Node.js example agent workers
+      CONTROL_PLANE_BASE_URL: bootstrap.runtime.baseUrl,
+      CONTROL_PLANE_API_KEY: bootstrap.runtime.apiKey ?? '',
+      CONTROL_PLANE_TIMEOUT_MS: String(bootstrap.runtime.timeoutMs ?? 10000),
+      EXAMPLE_AGENT_RUN_ID: bootstrap.run.runId,
+      EXAMPLE_AGENT_TRACE_ID: bootstrap.run.traceId ?? '',
+      EXAMPLE_AGENT_SCENARIO_REF: bootstrap.execution.scenarioRef,
+      EXAMPLE_AGENT_MODE_NAME: bootstrap.execution.modeName,
+      EXAMPLE_AGENT_MODE_VERSION: bootstrap.execution.modeVersion ?? '1.0.0',
+      EXAMPLE_AGENT_CONFIGURATION_VERSION: bootstrap.execution.configurationVersion ?? 'config.default',
+      EXAMPLE_AGENT_POLICY_VERSION: bootstrap.execution.policyVersion ?? '',
+      EXAMPLE_AGENT_POLICY_HINTS_JSON: JSON.stringify(bootstrap.execution.policyHints ?? {}),
+      EXAMPLE_AGENT_SESSION_TTL_MS: String(bootstrap.execution.ttlMs ?? 300000),
+      EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID: bootstrap.execution.initiatorParticipantId ?? '',
+      EXAMPLE_AGENT_CONTEXT_JSON: JSON.stringify(bootstrap.session.context ?? {}),
+      EXAMPLE_AGENT_PARTICIPANTS_JSON: JSON.stringify(bootstrap.session.participants ?? []),
+      EXAMPLE_AGENT_REF: bootstrap.participant.agentId ?? manifest.id,
+      EXAMPLE_AGENT_PARTICIPANT_ID: bootstrap.participant.participantId,
+      EXAMPLE_AGENT_ROLE: bootstrap.participant.role ?? '',
+      EXAMPLE_AGENT_FRAMEWORK: 'custom',
+      EXAMPLE_AGENT_TRANSPORT_IDENTITY: `agent://${bootstrap.participant.agentId ?? manifest.id}`,
+      EXAMPLE_AGENT_ENTRYPOINT: manifest.entrypoint.value
     };
 
     if (!isNode) {
@@ -62,5 +86,24 @@ export class CustomHostAdapter implements AgentHostAdapter {
       cwd,
       startupTimeoutMs: manifest.host?.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS
     };
+  }
+
+  /**
+   * Resolve a node_file entrypoint from src/*.ts to dist/*.js when the source
+   * file doesn't exist on disk (e.g. in Docker where only compiled JS is present).
+   */
+  private resolveEntrypoint(value: string, type: string, cwd: string): string {
+    if (type !== 'node_file') return value;
+
+    const absolute = path.resolve(cwd, value);
+    if (fs.existsSync(absolute)) return value;
+
+    // Try src/ → dist/ and .ts → .js
+    if (value.startsWith('src/') && value.endsWith('.ts')) {
+      const compiled = value.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js');
+      if (fs.existsSync(path.resolve(cwd, compiled))) return compiled;
+    }
+
+    return value;
   }
 }
