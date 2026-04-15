@@ -12,6 +12,7 @@ def map_kickoff_to_inputs(session_context: JsonDict) -> JsonDict:
         'is_vip_customer': bool(session_context.get('isVipCustomer', False)),
         'account_age_days': int(session_context.get('accountAgeDays', 0) or 0),
         'device_trust_score': float(session_context.get('deviceTrustScore', 0.0) or 0.0),
+        'prior_chargebacks': int(session_context.get('priorChargebacks', 0) or 0),
     }
 
 

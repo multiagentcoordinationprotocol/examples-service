@@ -1,0 +1,20 @@
+- id: credit-evaluated
+  title: Credit evaluation complete
+  description: Credit analyst has reviewed applicant score, DTI, and tenure.
+  requiredRoles: [credit-analyst]
+  policyRef: policy.lending.conservative
+- id: fraud-screened
+  title: Fraud screening complete
+  description: Fraud specialist has screened the application for identity and application-fraud signals.
+  requiredRoles: [fraud]
+  policyRef: policy.lending.conservative
+- id: compliance-reviewed
+  title: Compliance review complete
+  description: Compliance reviewer has confirmed fair-lending and KYC requirements are satisfied.
+  requiredRoles: [compliance]
+  policyRef: policy.lending.conservative
+- id: underwriting-decision
+  title: Underwriting decision finalized
+  description: Risk coordinator has reconciled specialist inputs and issued an underwriting decision.
+  requiredRoles: [risk]
+  policyRef: policy.lending.conservative

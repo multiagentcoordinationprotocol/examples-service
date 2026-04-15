@@ -74,6 +74,8 @@ spec:
         role: risk
         agentRef: risk-agent
 
+    commitments: !include ../../../../_shared/commitments/fraud.yaml
+
     contextTemplate:
       customerId: "{{ inputs.customerId }}"
       transactionAmount: "{{ inputs.transactionAmount }}"

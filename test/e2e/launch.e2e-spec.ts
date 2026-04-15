@@ -130,6 +130,21 @@ describe('Launch (e2e)', () => {
             designatedRoles: []
           });
           expect(res.body.executionRequest.session.participants).toHaveLength(4);
+          expect(res.body.executionRequest.session.commitments).toEqual([
+            {
+              id: 'fraud-risk-assessed',
+              title: 'Fraud risk assessed',
+              description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
+              requiredRoles: ['fraud'],
+              policyRef: 'policy.default'
+            },
+            {
+              id: 'decision-finalized',
+              title: 'Decision finalized',
+              description: 'Risk coordinator has reconciled inputs and committed a final decision.',
+              requiredRoles: ['risk']
+            }
+          ]);
           expect(res.body.executionRequest.session.context.transactionAmount).toBe(3200);
           expect(res.body.executionRequest.session.context.isVipCustomer).toBe(true);
           expect(res.body.executionRequest.session.metadata.source).toBe('example-service');
@@ -209,6 +224,43 @@ describe('Launch (e2e)', () => {
           expect(res.body.hostedAgents[0].transportIdentity).toContain('agent://');
           expect(res.body.hostedAgents[2].framework).toBe('crewai');
           expect(res.body.controlPlane.submitted).toBe(false);
+        });
+    });
+
+    it('inlines !include fragments at load time (commitments come from _shared/)', () => {
+      // The fraud fixture's `commitments:` block uses `!include ../../../../_shared/commitments/fraud.yaml`.
+      // Asserting the compiled request shows the fully-inlined array proves the loader resolved the
+      // include path during pack discovery and cached the result on the in-memory snapshot.
+      return request(app.getHttpServer())
+        .post('/examples/run')
+        .send({
+          scenarioRef: 'fraud/high-value-new-device@1.0.0',
+          submitToControlPlane: false,
+          inputs: {
+            transactionAmount: 3200,
+            deviceTrustScore: 0.12,
+            accountAgeDays: 5,
+            isVipCustomer: true,
+            priorChargebacks: 1
+          }
+        })
+        .expect(201)
+        .expect((res: any) => {
+          expect(res.body.compiled.executionRequest.session.commitments).toEqual([
+            {
+              id: 'fraud-risk-assessed',
+              title: 'Fraud risk assessed',
+              description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
+              requiredRoles: ['fraud'],
+              policyRef: 'policy.default'
+            },
+            {
+              id: 'decision-finalized',
+              title: 'Decision finalized',
+              description: 'Risk coordinator has reconciled inputs and committed a final decision.',
+              requiredRoles: ['risk']
+            }
+          ]);
         });
     });
 

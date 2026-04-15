@@ -121,6 +121,31 @@ describe('Example Run - Submit to Control Plane (integration)', () => {
         expect(participant.transportIdentity).toContain('agent://');
       }
     });
+
+    it('forwards session.commitments through to the control plane', async () => {
+      await ctx.client.runExample(fraudScenarioRunRequest());
+
+      const validateBody = ctx.mockControlPlane!.validateRequests[0].body as any;
+      const createBody = ctx.mockControlPlane!.createRunRequests[0].body as any;
+
+      const expected = [
+        {
+          id: 'fraud-risk-assessed',
+          title: 'Fraud risk assessed',
+          description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
+          requiredRoles: ['fraud'],
+          policyRef: 'policy.default'
+        },
+        {
+          id: 'decision-finalized',
+          title: 'Decision finalized',
+          description: 'Risk coordinator has reconciled inputs and committed a final decision.',
+          requiredRoles: ['risk']
+        }
+      ];
+      expect(validateBody.session.commitments).toEqual(expected);
+      expect(createBody.session.commitments).toEqual(expected);
+    });
   });
 
   describe('Cross-pack submission', () => {

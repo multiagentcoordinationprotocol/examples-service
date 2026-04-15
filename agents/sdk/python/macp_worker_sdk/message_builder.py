@@ -53,6 +53,7 @@ class MacpMessageBuilder:
         confidence: float,
         reason: str,
         recipients: Optional[List[str]] = None,
+        token_usage: Optional[JsonDict] = None,
     ) -> JsonDict:
         """Build an Evaluation message."""
         return self._build_message(
@@ -67,6 +68,7 @@ class MacpMessageBuilder:
                     'reason': reason,
                 },
             ),
+            token_usage=token_usage,
         )
 
     def objection(
@@ -75,6 +77,7 @@ class MacpMessageBuilder:
         reason: str,
         severity: str = 'high',
         recipients: Optional[List[str]] = None,
+        token_usage: Optional[JsonDict] = None,
     ) -> JsonDict:
         """Build an Objection message."""
         return self._build_message(
@@ -88,6 +91,7 @@ class MacpMessageBuilder:
                     'severity': severity,
                 },
             ),
+            token_usage=token_usage,
         )
 
     def vote(
@@ -145,17 +149,21 @@ class MacpMessageBuilder:
         message_type: str,
         recipients: List[str],
         payload_envelope: JsonDict,
+        token_usage: Optional[JsonDict] = None,
     ) -> JsonDict:
+        metadata: JsonDict = {
+            'framework': self.framework,
+            'agentRef': self.agent_ref,
+            'hostKind': f'{self.framework}-process',
+        }
+        if token_usage:
+            metadata['tokenUsage'] = token_usage
         return {
             'from': self.participant_id,
             'to': recipients,
             'messageType': message_type,
             'payloadEnvelope': payload_envelope,
-            'metadata': {
-                'framework': self.framework,
-                'agentRef': self.agent_ref,
-                'hostKind': f'{self.framework}-process',
-            },
+            'metadata': metadata,
         }
 
 
@@ -163,6 +171,11 @@ def extract_payload(event: JsonDict) -> JsonDict:
     """Extract the decoded payload from a control plane event."""
     data = event.get('data') or {}
     payload = data.get('decodedPayload') or data.get('payload') or {}
+    if not payload or not isinstance(payload, dict):
+        # Fall back to payloadDescriptor.proto.value (real runtime format)
+        descriptor = data.get('payloadDescriptor') or {}
+        proto = descriptor.get('proto') or {} if isinstance(descriptor, dict) else {}
+        payload = proto.get('value') or {} if isinstance(proto, dict) else {}
     return payload if isinstance(payload, dict) else {}
 
 

@@ -50,30 +50,13 @@ spec:
     modeVersion: 1.0.0
     configurationVersion: config.default
     policyVersion: policy.claims.majority
-    policyHints:
-      type: majority
-      description: Simple majority vote with 2-voter quorum for claims review
-      threshold: 0.5
-      vetoEnabled: false
-      vetoThreshold: 1
-      minimumConfidence: 0.0
-      designatedRoles: []
+    policyHints: !include ../../../../_shared/policy-hints/claims-majority.yaml
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 
-    participants:
-      - id: fraud-agent
-        role: claims-validator
-        agentRef: fraud-agent
-      - id: growth-agent
-        role: customer-advocate
-        agentRef: growth-agent
-      - id: compliance-agent
-        role: compliance-reviewer
-        agentRef: compliance-agent
-      - id: risk-agent
-        role: risk
-        agentRef: risk-agent
+    participants: !include ../../../../_shared/participants/4-agent-claims.yaml
+
+    commitments: !include ../../../../_shared/commitments/claims.yaml
 
     contextTemplate:
       claimId: "{{ inputs.claimId }}"

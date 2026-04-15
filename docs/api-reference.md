@@ -209,7 +209,30 @@ Validate user inputs and compile them into a control-plane-ready ExecutionReques
 **Response:** `201`
 ```json
 {
-  "executionRequest": { ... },
+  "executionRequest": {
+    "mode": "sandbox",
+    "runtime": { "kind": "rust", "version": "v1" },
+    "session": {
+      "modeName": "macp.mode.decision.v1",
+      "policyVersion": "policy.default",
+      "participants": [ ... ],
+      "commitments": [
+        {
+          "id": "fraud-risk-assessed",
+          "title": "Fraud risk assessed",
+          "description": "Fraud specialist has evaluated transaction signals and recorded a risk verdict.",
+          "requiredRoles": ["fraud"],
+          "policyRef": "policy.default"
+        },
+        {
+          "id": "decision-finalized",
+          "title": "Decision finalized",
+          "requiredRoles": ["risk"]
+        }
+      ]
+    },
+    "kickoff": [ ... ]
+  },
   "display": {
     "title": "High Value Purchase From New Device",
     "scenarioRef": "fraud/high-value-new-device@1.0.0",
@@ -221,6 +244,8 @@ Validate user inputs and compile them into a control-plane-ready ExecutionReques
   ]
 }
 ```
+
+`session.commitments[]` — optional commitment definitions declared by the scenario. Each entry: `{ id, title, description?, requiredRoles?, policyRef? }`. The control plane uses these to populate `PolicyProjection.expectedCommitments` at `binding_session` time so UIs can render the expected commitment list before the first evaluation fires. Scenarios without commitments omit the field entirely.
 
 **Errors:** `400 VALIDATION_ERROR | INVALID_SCENARIO_REF`, `404 SCENARIO_NOT_FOUND | VERSION_NOT_FOUND | TEMPLATE_NOT_FOUND`
 

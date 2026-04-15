@@ -1,9 +1,14 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { createScenarioAjv } from './ajv-factory';
 import { CompileLaunchRequest, CompileLaunchResult, PayloadEnvelope } from '../contracts/launch';
 import { ParticipantAgentBinding } from '../contracts/example-agents';
-import { ScenarioVersionFile, ScenarioTemplateFile, KickoffTemplate } from '../contracts/registry';
+import {
+  CommitmentDefinition,
+  ScenarioVersionFile,
+  ScenarioTemplateFile,
+  KickoffTemplate
+} from '../contracts/registry';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 import { RegistryIndexService } from '../registry/registry-index.service';
@@ -42,8 +47,7 @@ export class CompilerService {
   private readonly ajv: Ajv;
 
   constructor(private readonly registryIndex: RegistryIndexService) {
-    this.ajv = new Ajv({ allErrors: true, coerceTypes: false });
-    addFormats(this.ajv);
+    this.ajv = createScenarioAjv();
   }
 
   async compile(request: CompileLaunchRequest): Promise<CompileLaunchResult> {
@@ -85,6 +89,10 @@ export class CompilerService {
       ? (substitute(launch.kickoffTemplate, substitutionVars) as KickoffTemplate[])
       : undefined;
 
+    const commitments = launch.commitments
+      ? (substitute(launch.commitments, substitutionVars) as CommitmentDefinition[])
+      : undefined;
+
     const participantBindings: ParticipantAgentBinding[] = launch.participants.map((participant) => ({
       participantId: participant.id,
       role: participant.role,
@@ -117,6 +125,7 @@ export class CompilerService {
               description: participant.description
             }
           })),
+          commitments,
           context,
           metadata: {
             source: 'example-service',

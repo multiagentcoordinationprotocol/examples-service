@@ -57,30 +57,13 @@ spec:
     modeVersion: 1.0.0
     configurationVersion: config.default
     policyVersion: policy.lending.conservative
-    policyHints:
-      type: supermajority
-      description: Conservative lending policy — supermajority vote with mandatory evaluations and veto blocking
-      threshold: 0.67
-      vetoEnabled: true
-      vetoThreshold: 1
-      minimumConfidence: 0.6
-      designatedRoles: [risk, compliance]
+    policyHints: !include ../../../../_shared/policy-hints/lending-conservative.yaml
     ttlMs: 300000
     initiatorParticipantId: risk-agent
 
-    participants:
-      - id: fraud-agent
-        role: fraud
-        agentRef: fraud-agent
-      - id: growth-agent
-        role: credit-analyst
-        agentRef: growth-agent
-      - id: compliance-agent
-        role: compliance
-        agentRef: compliance-agent
-      - id: risk-agent
-        role: risk
-        agentRef: risk-agent
+    participants: !include ../../../../_shared/participants/4-agent-lending.yaml
+
+    commitments: !include ../../../../_shared/commitments/lending.yaml
 
     contextTemplate:
       applicantId: "{{ inputs.applicantId }}"

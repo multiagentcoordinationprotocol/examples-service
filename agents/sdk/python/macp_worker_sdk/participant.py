@@ -37,8 +37,9 @@ class Actions:
         confidence: float,
         reason: str,
         recipients: Optional[List[str]] = None,
+        token_usage: Optional[Dict[str, Any]] = None,
     ) -> None:
-        msg = self._builder.evaluation(proposal_id, recommendation, confidence, reason, recipients or self._recipients)
+        msg = self._builder.evaluation(proposal_id, recommendation, confidence, reason, recipients or self._recipients, token_usage=token_usage)
         self._client.send_message(msg)
 
     def object(
@@ -47,8 +48,9 @@ class Actions:
         reason: str,
         severity: str = 'high',
         recipients: Optional[List[str]] = None,
+        token_usage: Optional[Dict[str, Any]] = None,
     ) -> None:
-        msg = self._builder.objection(proposal_id, reason, severity, recipients or self._recipients)
+        msg = self._builder.objection(proposal_id, reason, severity, recipients or self._recipients, token_usage=token_usage)
         self._client.send_message(msg)
 
     def vote(
@@ -188,6 +190,10 @@ class Participant:
         handler_key = _EVENT_TYPE_MAP.get(event_type)
 
         if handler_key is None and event_type == 'proposal.updated':
+            handler_key = extract_message_type(event)
+
+        # Also match message.sent/message.received with a messageType in data
+        if handler_key is None and event_type in ('message.sent', 'message.received'):
             handler_key = extract_message_type(event)
 
         if handler_key is None:

@@ -95,9 +95,30 @@ Four demo agents are included:
 
 All agents use an **active process-backed** hosting strategy. Python and Node.js worker processes are spawned after the control plane creates a run, poll for events, and send MACP messages back through the control plane. Transport identities and entrypoints are resolved and injected into the ExecutionRequest before submission.
 
-## Creating Scenario Packs
+## Authoring a scenario
 
-See [docs/scenario-authoring.md](docs/scenario-authoring.md) for the full authoring guide.
+Internal-only authoring workflow — no public CRUD surface. The fastest path uses the bundled CLI:
+
+```bash
+npm run scenario:new -- demo my-sample           # scaffold packs/demo/scenarios/my-sample/1.0.0/
+$EDITOR packs/demo/scenarios/my-sample/1.0.0/scenario.yaml
+echo '{"sampleField":"hello"}' > /tmp/inputs.json
+npm run scenario:validate -- packs/demo/scenarios/my-sample/1.0.0/scenario.yaml
+npm run scenario:dry-run  -- 'demo/my-sample@1.0.0' --inputs /tmp/inputs.json
+npm run scenario:lint     -- packs                # static checks across every pack
+```
+
+Bulky data and shared fragments live outside `scenario.yaml` via the `!include` tag — the loader inlines them at load time, so the compiled `ExecutionRequest` looks the same as if everything were inline.
+
+```yaml
+launch:
+  participants: !include ../../../../_shared/participants/4-agent-fraud.yaml
+  commitments:  !include ../../../../_shared/commitments/fraud.yaml
+  contextTemplate:
+    customers:  !include ./data/customers.json   # 200-row sample list lives here
+```
+
+Conventional shared fragments live under `packs/_shared/` (the leading underscore tells the loader to skip the directory during pack discovery).
 
 ```
 packs/{pack-slug}/
@@ -107,7 +128,15 @@ packs/{pack-slug}/
     templates/
       default.yaml
       *.yaml
+    data/                # bulk JSON/YAML referenced via !include
+    fixtures/            # sample inputs used by `scenario:validate` and `scenario:dry-run`
+packs/_shared/           # cross-pack fragments — loader ignores _-prefixed dirs
+  participants/
+  commitments/
+  policy-hints/
 ```
+
+See [`docs/scenario-authoring.md`](docs/scenario-authoring.md) for the full YAML reference and [`docs/scenario-cli.md`](docs/scenario-cli.md) for the CLI reference (commands, exit codes, troubleshooting).
 
 ## Configuration
 
@@ -174,13 +203,20 @@ CORS_ORIGIN=https://your-app.vercel.app,https://your-app-*.vercel.app
 ## Development
 
 ```bash
-npm run build          # Compile TypeScript
-npm run start:dev      # Dev mode with auto-reload
-npm test               # Unit tests
-npm run test:e2e       # E2E tests
-npm run test:cov       # Coverage report
-npm run lint           # ESLint
-npm run format         # Prettier
+npm run build              # Compile TypeScript
+npm run start:dev          # Dev mode with auto-reload
+npm test                   # Unit tests
+npm run test:e2e           # E2E tests
+npm run test:integration   # Integration tests (mock control plane)
+npm run test:cov           # Coverage report
+npm run lint               # ESLint
+npm run format             # Prettier
+
+# Scenario authoring
+npm run scenario:new       # Scaffold a new scenario directory tree
+npm run scenario:validate  # Validate a scenario (includes, schema, fixtures, agentRefs)
+npm run scenario:dry-run   # Compile a scenario offline and print the ExecutionRequest
+npm run scenario:lint      # Static checks across one or more packs
 ```
 
 ## Docker

@@ -1,25 +1,33 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
-ARG NODE_AUTH_TOKEN
 COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --ignore-scripts
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src/ src/
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
-RUN apk add --no-cache python3 py3-pip \
-  && addgroup -S appgroup \
-  && adduser -S appuser -G appgroup
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-pip python3-venv gcc python3-dev libffi-dev \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd -r appgroup \
+  && useradd -r -g appgroup appuser
 
-ARG NODE_AUTH_TOKEN
+# Install Python agent framework dependencies (LangGraph, LangChain, CrewAI)
+COPY agents/requirements.txt /tmp/agent-requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/agent-requirements.txt \
+  && rm /tmp/agent-requirements.txt
+
 COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --ignore-scripts --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist dist/
 COPY packs/ packs/
 COPY agents/ agents/
+COPY policies/ policies/
+
+RUN mkdir -p /home/appuser/.local/share && chown -R appuser:appgroup /home/appuser
 
 USER appuser
 ENV NODE_ENV=production
