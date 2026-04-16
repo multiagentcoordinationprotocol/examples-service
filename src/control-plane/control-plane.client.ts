@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { ExecutionRequest } from '../contracts/launch';
+import { RunDescriptor } from '../contracts/run-descriptor';
 import {
   PolicyDefinition,
   PolicyDescriptor,
@@ -10,8 +10,14 @@ import {
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 
-interface ControlPlaneRunResponse {
+/**
+ * Response shape from the control-plane's `POST /runs` (as of CP-2).
+ * `sessionId` is allocated (or echoed) by the control-plane and is the
+ * single source of truth for the run's runtime session.
+ */
+export interface ControlPlaneRunResponse {
   runId: string;
+  sessionId: string;
   status: string;
   traceId?: string;
 }
@@ -32,11 +38,11 @@ export class ControlPlaneClient {
     return this.config.controlPlaneBaseUrl;
   }
 
-  async validate(request: ExecutionRequest): Promise<void> {
+  async validate(request: RunDescriptor): Promise<void> {
     await this.request('/runs/validate', request);
   }
 
-  async createRun(request: ExecutionRequest): Promise<ControlPlaneRunResponse> {
+  async createRun(request: RunDescriptor): Promise<ControlPlaneRunResponse> {
     return this.requestWithConflict<ControlPlaneRunResponse>('/runs', request);
   }
 

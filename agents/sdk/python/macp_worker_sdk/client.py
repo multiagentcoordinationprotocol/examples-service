@@ -1,4 +1,10 @@
-"""Control plane HTTP client for worker processes."""
+"""Control-plane HTTP client for worker processes.
+
+Read-only observability only — envelope emission MUST go through the
+`macp_sdk` client directly to the runtime (RFC-MACP-0004 §4,
+RFC-MACP-0001 §5.3). The legacy `send_message()` write path has been
+removed as part of ES-8 (direct-agent-auth).
+"""
 
 import json
 import urllib.error
@@ -48,10 +54,6 @@ class ControlPlaneClient:
         query = urllib.parse.urlencode({'afterSeq': after_seq, 'limit': limit})
         result = self._request('GET', f'/runs/{self.run_id}/events?{query}')
         return result if isinstance(result, list) else []
-
-    def send_message(self, body: JsonDict) -> JsonDict:
-        """Send an MACP message to the run."""
-        return self._request('POST', f'/runs/{self.run_id}/messages', body)
 
     def is_terminal(self, run: Optional[JsonDict] = None) -> bool:
         """Check whether the run has reached a terminal status."""

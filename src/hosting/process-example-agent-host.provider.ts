@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -8,6 +8,8 @@ import {
   ParticipantAgentBinding
 } from '../contracts/example-agents';
 import { AppConfigService } from '../config/app-config.service';
+import { AppException } from '../errors/app-exception';
+import { ErrorCode } from '../errors/error-codes';
 import { ExampleAgentHostProvider } from './example-agent-host.provider';
 import { HostAdapterRegistry } from './host-adapter-registry';
 import { LaunchSupervisor } from './launch-supervisor';
@@ -65,7 +67,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     const base = await this.resolve(definition, binding);
 
     const existing = this.supervisor.getProcess(context.runId, binding.participantId);
-    if (existing && existing.child.pid && existing.healthStatus !== 'stopped') {
+    if (existing?.child.pid && existing.healthStatus !== 'stopped') {
       return {
         ...base,
         status: 'bootstrapped',
@@ -188,6 +190,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     const bootstrapFilePath = this.supervisor.writeBootstrapFile(bootstrap);
 
     const args = [entrypoint, ...(definition.bootstrap.args ?? [])];
+    const bearerToken = this.resolveAgentToken(binding, definition);
     const env: Record<string, string> = {
       ...process.env as Record<string, string>,
       ...(definition.bootstrap.env ?? {}),
@@ -197,10 +200,16 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
       MACP_FRAMEWORK: definition.framework,
       MACP_PARTICIPANT_ID: binding.participantId,
       MACP_RUN_ID: context.runId,
+      MACP_SESSION_ID: context.sessionId ?? '',
+      MACP_RUNTIME_ADDRESS: this.config.runtimeAddress,
+      MACP_RUNTIME_TLS: String(this.config.runtimeTls),
+      MACP_RUNTIME_ALLOW_INSECURE: String(this.config.runtimeAllowInsecure),
+      MACP_RUNTIME_TOKEN: bearerToken ?? '',
       CONTROL_PLANE_BASE_URL: this.config.controlPlaneBaseUrl,
       CONTROL_PLANE_API_KEY: this.config.controlPlaneApiKey ?? '',
       CONTROL_PLANE_TIMEOUT_MS: String(this.config.controlPlaneTimeoutMs ?? 10000),
       EXAMPLE_AGENT_RUN_ID: context.runId,
+      EXAMPLE_AGENT_SESSION_ID: context.sessionId ?? '',
       EXAMPLE_AGENT_TRACE_ID: context.traceId ?? '',
       EXAMPLE_AGENT_SCENARIO_REF: context.scenarioRef,
       EXAMPLE_AGENT_MODE_NAME: context.modeName,
@@ -252,9 +261,16 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     context: ExampleAgentRunContext,
     manifest: AgentManifest
   ): BootstrapPayload {
+    const runtimeAddress = this.config.runtimeAddress || undefined;
+    const bearerToken = this.resolveAgentToken(binding, definition);
+    const useDirectGrpc = Boolean(runtimeAddress && bearerToken);
+    const isInitiator =
+      context.initiator?.participantId === binding.participantId;
+
     return {
       run: {
         runId: context.runId,
+        sessionId: context.sessionId ?? '',
         traceId: context.traceId
       },
       participant: {
@@ -264,13 +280,17 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
         role: binding.role
       },
       runtime: {
+        address: runtimeAddress,
+        bearerToken,
+        tls: useDirectGrpc ? this.config.runtimeTls : undefined,
+        allowInsecure: useDirectGrpc ? this.config.runtimeAllowInsecure : undefined,
         baseUrl: this.config.controlPlaneBaseUrl,
         messageEndpoint: `/runs/${context.runId}/messages`,
         eventsEndpoint: `/runs/${context.runId}/events`,
         apiKey: this.config.controlPlaneApiKey,
         timeoutMs: this.config.controlPlaneTimeoutMs,
         joinMetadata: {
-          transport: 'http',
+          transport: useDirectGrpc ? 'grpc' : 'http',
           messageFormat: 'macp'
         }
       },
@@ -293,8 +313,55 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
         manifest: manifest as unknown as Record<string, unknown>,
         framework: definition.framework,
         frameworkConfig: manifest.frameworkConfig
-      }
+      },
+      initiator: isInitiator
+        ? {
+            sessionStart: context.initiator!.sessionStart,
+            kickoff: context.initiator!.kickoff
+          }
+        : undefined,
+      cancelCallback: this.allocateCancelCallback(binding.participantId, context.runId)
     };
+  }
+
+  private resolveAgentToken(
+    binding: ParticipantAgentBinding,
+    definition: ExampleAgentDefinition
+  ): string | undefined {
+    return (
+      this.config.resolveAgentToken(binding.participantId) ??
+      this.config.resolveAgentToken(definition.agentRef)
+    );
+  }
+
+  private allocateCancelCallback(
+    participantId: string,
+    runId: string
+  ): BootstrapPayload['cancelCallback'] {
+    const host = this.config.cancelCallbackHost;
+    if (!host) return undefined;
+    const base = this.config.cancelCallbackPortBase;
+    if (!base || base <= 0) {
+      // No port base configured; agents will listen on an ephemeral port and
+      // POST the port back to the control-plane via a future registration
+      // call. For now we just record host+path and let the agent bind :0.
+      return { host, port: 0, path: this.config.cancelCallbackPath };
+    }
+    const port = this.nextCancelCallbackPort(base, runId, participantId);
+    return { host, port, path: this.config.cancelCallbackPath };
+  }
+
+  private nextCancelCallbackPort(base: number, runId: string, participantId: string): number {
+    // Deterministic offset so the same (runId, participantId) always lands on
+    // the same port within a process — avoids collisions when launching the
+    // same scenario repeatedly against a single host.
+    let hash = 0;
+    const material = `${runId}:${participantId}`;
+    for (let i = 0; i < material.length; i += 1) {
+      hash = (hash * 31 + material.charCodeAt(i)) | 0;
+    }
+    const offset = Math.abs(hash) % 1024;
+    return base + offset;
   }
 
   private resolveLauncher(definition: ExampleAgentDefinition): 'node' | 'python' {
@@ -314,7 +381,11 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
       : path.resolve(process.cwd(), logicalEntrypoint);
 
     if (!fs.existsSync(diskPath)) {
-      throw new Error(`example agent entrypoint not found: ${diskPath}`);
+      throw new AppException(
+        ErrorCode.INTERNAL_ERROR,
+        `example agent entrypoint not found: ${diskPath}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
 
     return diskPath;

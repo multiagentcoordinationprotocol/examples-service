@@ -59,6 +59,21 @@ export class MockControlPlane {
     return this._requests.filter((r) => r.path === '/runtime/policies' && r.method === 'POST');
   }
 
+  /**
+   * Direct-agent-auth invariant §5: the control-plane must never forge Sends
+   * on behalf of agents. This getter captures any request to the legacy
+   * write endpoints so tests can assert the count stays at zero.
+   */
+  get messageRequests(): RecordedRequest[] {
+    return this._requests.filter(
+      (r) =>
+        r.method === 'POST' &&
+        (/^\/runs\/[^/]+\/messages$/.test(r.path) ||
+          /^\/runs\/[^/]+\/signal$/.test(r.path) ||
+          /^\/runs\/[^/]+\/context$/.test(r.path))
+    );
+  }
+
   get registeredPolicies(): Map<string, unknown> {
     return this._registeredPolicies;
   }
@@ -190,9 +205,12 @@ export class MockControlPlane {
   private handleCreateRun(body: unknown, res: http.ServerResponse): void {
     if (!this.isValidExecutionRequest(body)) {
       res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid ExecutionRequest structure' }));
+      res.end(JSON.stringify({ error: 'Invalid RunDescriptor structure' }));
       return;
     }
+
+    const requested = this.extractSessionId(body);
+    const sessionId = requested ?? randomUUID();
 
     const failure = this._createRunFailure;
     if (failure.kind === 'none') {
@@ -201,6 +219,7 @@ export class MockControlPlane {
       res.end(
         JSON.stringify({
           runId: randomUUID(),
+          sessionId,
           status: 'queued',
           traceId: randomUUID()
         })
@@ -211,13 +230,28 @@ export class MockControlPlane {
     } else if (failure.kind === 'timeout') {
       const timer = setTimeout(() => {
         res.writeHead(201, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ runId: randomUUID(), status: 'queued', traceId: randomUUID() }));
+        res.end(
+          JSON.stringify({
+            runId: randomUUID(),
+            sessionId,
+            status: 'queued',
+            traceId: randomUUID()
+          })
+        );
       }, failure.delayMs);
       this._pendingTimers.push(timer);
     } else if (failure.kind === 'validate-reject') {
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ errors: failure.errors }));
     }
+  }
+
+  private extractSessionId(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object') return undefined;
+    const session = (body as Record<string, unknown>).session;
+    if (!session || typeof session !== 'object') return undefined;
+    const id = (session as Record<string, unknown>).sessionId;
+    return typeof id === 'string' && id.trim().length > 0 ? id : undefined;
   }
 
   private handleRegisterPolicy(body: unknown, res: http.ServerResponse): void {

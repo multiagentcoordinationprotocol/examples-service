@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
-"""LangGraph fraud agent worker — runs a real graph and emits MACP messages."""
+"""LangGraph fraud agent worker — runs a real graph and emits MACP messages.
+
+Direct-agent-auth (RFC-MACP-0004 §4): this worker authenticates directly to
+the MACP runtime over gRPC using a per-agent Bearer token loaded from its
+bootstrap file. The control-plane is observed via read-only HTTP polling; it
+NEVER forges envelopes on this agent's behalf.
+"""
 
 import sys
 import os
 
-# Add SDK to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'sdk', 'python'))
+_HERE = os.path.dirname(__file__)
+# in-tree worker SDK (event loop, bootstrap loader, policy-strategy)
+sys.path.insert(0, os.path.join(_HERE, '..', 'sdk', 'python'))
+# python-sdk (direct-to-runtime MacpClient / DecisionSession) — fallback to
+# path-install when the package isn't yet available on PyPI.
+_SDK_SRC = os.path.join(_HERE, '..', '..', '..', 'python-sdk', 'src')
+if os.path.isdir(_SDK_SRC) and _SDK_SRC not in sys.path:
+    sys.path.insert(0, _SDK_SRC)
 
-from macp_worker_sdk.bootstrap import log_agent
-from macp_worker_sdk.participant import from_bootstrap
+from macp_worker_sdk.bootstrap import log_agent  # noqa: E402
+from macp_worker_sdk.participant import from_bootstrap  # noqa: E402
 
-from graph import build_graph
-from mappers import map_kickoff_to_state
+from graph import build_graph  # noqa: E402
+from mappers import map_kickoff_to_state  # noqa: E402
 
 
 def main() -> int:
@@ -35,7 +47,6 @@ def main() -> int:
             recommendation=graph_output.get('recommendation', 'REVIEW'),
             confidence=graph_output.get('confidence', 0.5),
             reason=graph_output.get('reason', 'fraud graph evaluation'),
-            token_usage=graph_output.get('token_usage'),
         )
 
         log_agent('evaluation sent', proposalId=ctx.proposal_id)

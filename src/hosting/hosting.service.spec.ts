@@ -11,8 +11,28 @@ describe('HostingService', () => {
     service = new HostingService(new ExampleAgentCatalogService(), new InMemoryExampleAgentHostProvider());
   });
 
+  const sessionId = '00000000-0000-4000-8000-000000000001';
+
   function buildCompiled(): CompileLaunchResult {
     return {
+      sessionId,
+      runDescriptor: {
+        mode: 'sandbox',
+        runtime: { kind: 'rust' },
+        session: {
+          sessionId,
+          modeName: 'macp.mode.decision.v1',
+          modeVersion: '1.0.0',
+          configurationVersion: 'config.default',
+          ttlMs: 300000,
+          participants: [
+            { id: 'fraud-agent' },
+            { id: 'growth-agent' },
+            { id: 'compliance-agent' },
+            { id: 'risk-agent' }
+          ]
+        }
+      },
       executionRequest: {
         mode: 'sandbox',
         runtime: { kind: 'rust', version: 'v1' },

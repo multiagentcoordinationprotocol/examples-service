@@ -19,7 +19,7 @@ function buildDefinition(overrides?: Partial<ExampleAgentDefinition>): ExampleAg
     framework: 'langgraph',
     bootstrap: {
       strategy: 'external',
-      entrypoint: 'agents/python/langgraph_fraud_agent.py',
+      entrypoint: 'agents/langgraph_worker/main.py',
       transportIdentity: 'agent://fraud-agent',
       mode: 'attached',
       launcher: 'python'
@@ -75,8 +75,16 @@ describe('ProcessExampleAgentHostProvider', () => {
       exampleAgentNodePath: '/usr/local/bin/node',
       controlPlaneBaseUrl: 'http://localhost:3001',
       controlPlaneApiKey: 'test-key',
-      controlPlaneTimeoutMs: 10000
-    } as AppConfigService;
+      controlPlaneTimeoutMs: 10000,
+      agentRuntimeTokens: {},
+      runtimeAddress: '',
+      runtimeTls: true,
+      runtimeAllowInsecure: false,
+      cancelCallbackHost: '127.0.0.1',
+      cancelCallbackPortBase: 0,
+      cancelCallbackPath: '/agent/cancel',
+      resolveAgentToken: (key: string | undefined) => (key ? config.agentRuntimeTokens[key] : undefined)
+    } as unknown as AppConfigService;
 
     adapterRegistry = new HostAdapterRegistry();
     supervisor = new LaunchSupervisor();
@@ -173,13 +181,22 @@ describe('ProcessExampleAgentHostProvider', () => {
       expect(result.participantMetadata?.launchMode).toBe('legacy');
     });
 
-    it('throws when entrypoint file does not exist', async () => {
+    it('throws AppException(INTERNAL_ERROR) when entrypoint file does not exist', async () => {
       (fs.existsSync as jest.Mock).mockReturnValue(false);
       jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
 
-      await expect(provider.attach(buildDefinition(), buildBinding(), buildContext())).rejects.toThrow(
-        /entrypoint not found/
-      );
+      try {
+        await provider.attach(buildDefinition(), buildBinding(), buildContext());
+        fail('should have thrown');
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid top-of-file circular import
+        const { AppException } = require('../errors/app-exception');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid top-of-file circular import
+        const { ErrorCode } = require('../errors/error-codes');
+        expect(err).toBeInstanceOf(AppException);
+        expect((err as InstanceType<typeof AppException>).errorCode).toBe(ErrorCode.INTERNAL_ERROR);
+        expect((err as Error).message).toMatch(/entrypoint not found/);
+      }
     });
 
     it('deduplicates by runId:participantId via supervisor', async () => {
@@ -208,6 +225,114 @@ describe('ProcessExampleAgentHostProvider', () => {
       const spy = jest.spyOn(supervisor, 'onModuleDestroy');
       provider.onModuleDestroy();
       expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('direct-agent-auth bootstrap payload', () => {
+    it('populates runtime.address + bearerToken + sessionId when tokens are configured', async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const mockChild = createMockChild();
+      (config as unknown as { agentRuntimeTokens: Record<string, string> }).agentRuntimeTokens = {
+        'fraud-agent': 'tok-fraud'
+      };
+      (config as unknown as { runtimeAddress: string }).runtimeAddress = 'runtime.local:50051';
+
+      const writeSpy = jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
+      jest.spyOn(supervisor, 'launch').mockReturnValue({
+        handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
+        child: mockChild,
+        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        launchedAt: '2026-01-01T00:00:00Z',
+        command: 'python3',
+        args: ['test.py'],
+        bootstrapFilePath: '/tmp/bootstrap.json',
+        healthStatus: 'starting'
+      });
+
+      const ctx = buildContext({ sessionId: 'sess-uuid-v4', initiator: undefined });
+      await provider.attach(buildDefinition(), buildBinding(), ctx);
+
+      const bootstrap = writeSpy.mock.calls[0][0];
+      expect(bootstrap.run.sessionId).toBe('sess-uuid-v4');
+      expect(bootstrap.runtime.address).toBe('runtime.local:50051');
+      expect(bootstrap.runtime.bearerToken).toBe('tok-fraud');
+      expect(bootstrap.runtime.tls).toBe(true);
+      expect(bootstrap.runtime.joinMetadata.transport).toBe('grpc');
+      expect(bootstrap.cancelCallback?.host).toBe('127.0.0.1');
+      expect(bootstrap.cancelCallback?.path).toBe('/agent/cancel');
+    });
+
+    it('stays on the legacy HTTP transport when no token is configured for the agent', async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const mockChild = createMockChild();
+      const writeSpy = jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
+      jest.spyOn(supervisor, 'launch').mockReturnValue({
+        handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
+        child: mockChild,
+        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        launchedAt: '2026-01-01T00:00:00Z',
+        command: 'python3',
+        args: ['test.py'],
+        bootstrapFilePath: '/tmp/bootstrap.json',
+        healthStatus: 'starting'
+      });
+
+      await provider.attach(buildDefinition(), buildBinding(), buildContext());
+
+      const bootstrap = writeSpy.mock.calls[0][0];
+      expect(bootstrap.runtime.address).toBeUndefined();
+      expect(bootstrap.runtime.bearerToken).toBeUndefined();
+      expect(bootstrap.runtime.joinMetadata.transport).toBe('http');
+    });
+
+    it('populates initiator.sessionStart + kickoff only on the initiator agent', async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const mockChild = createMockChild();
+      (config as unknown as { agentRuntimeTokens: Record<string, string> }).agentRuntimeTokens = {
+        'fraud-agent': 'tok-fraud',
+        'risk-agent': 'tok-risk'
+      };
+
+      const writeSpy = jest.spyOn(supervisor, 'writeBootstrapFile').mockReturnValue('/tmp/bootstrap.json');
+      jest.spyOn(supervisor, 'launch').mockReturnValue({
+        handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
+        child: mockChild,
+        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        launchedAt: '2026-01-01T00:00:00Z',
+        command: 'python3',
+        args: ['test.py'],
+        bootstrapFilePath: '/tmp/bootstrap.json',
+        healthStatus: 'starting'
+      });
+
+      const ctx = buildContext({
+        sessionId: 'sess-uuid-v4',
+        initiator: {
+          participantId: 'fraud-agent',
+          sessionStart: {
+            intent: 'fraud/high-value-new-device',
+            participants: ['fraud-agent', 'risk-agent'],
+            ttlMs: 300000,
+            modeVersion: '1.0.0',
+            configurationVersion: 'config.default'
+          },
+          kickoff: { messageType: 'Proposal', payload: { option: 'review' } }
+        }
+      });
+
+      await provider.attach(buildDefinition(), buildBinding({ participantId: 'fraud-agent' }), ctx);
+      let bootstrap = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0];
+      expect(bootstrap.initiator).toBeDefined();
+      expect(bootstrap.initiator?.sessionStart.intent).toBe('fraud/high-value-new-device');
+      expect(bootstrap.initiator?.kickoff?.messageType).toBe('Proposal');
+
+      await provider.attach(
+        buildDefinition({ agentRef: 'risk-agent', name: 'Risk Agent', framework: 'custom' }),
+        buildBinding({ participantId: 'risk-agent', agentRef: 'risk-agent' }),
+        ctx
+      );
+      bootstrap = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0];
+      expect(bootstrap.initiator).toBeUndefined();
     });
   });
 });

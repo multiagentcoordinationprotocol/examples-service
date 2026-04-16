@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
-"""LangChain growth agent worker — runs a real chain and emits MACP messages."""
+"""LangChain growth agent worker — runs a real chain and emits MACP messages.
+
+Direct-agent-auth (RFC-MACP-0004 §4): this worker authenticates directly to
+the MACP runtime over gRPC using a per-agent Bearer token loaded from its
+bootstrap file. The control-plane is observed via read-only HTTP polling; it
+NEVER forges envelopes on this agent's behalf.
+"""
 
 import sys
 import os
 
-# Add SDK to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'sdk', 'python'))
+_HERE = os.path.dirname(__file__)
+sys.path.insert(0, os.path.join(_HERE, '..', 'sdk', 'python'))
+_SDK_SRC = os.path.join(_HERE, '..', '..', '..', 'python-sdk', 'src')
+if os.path.isdir(_SDK_SRC) and _SDK_SRC not in sys.path:
+    sys.path.insert(0, _SDK_SRC)
 
-from macp_worker_sdk.bootstrap import log_agent
-from macp_worker_sdk.participant import from_bootstrap
+from macp_worker_sdk.bootstrap import log_agent  # noqa: E402
+from macp_worker_sdk.participant import from_bootstrap  # noqa: E402
 
-from chain import build_agent
-from mappers import map_kickoff_to_inputs
+from chain import build_agent  # noqa: E402
+from mappers import map_kickoff_to_inputs  # noqa: E402
 
 
 def main() -> int:
@@ -34,7 +43,6 @@ def main() -> int:
             recommendation=chain_output.get('recommendation', 'REVIEW'),
             confidence=chain_output.get('confidence', 0.5),
             reason=chain_output.get('reason', 'growth chain evaluation'),
-            token_usage=chain_output.get('token_usage'),
         )
 
         log_agent('evaluation sent', proposalId=ctx.proposal_id)

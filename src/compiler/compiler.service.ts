@@ -1,7 +1,14 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import Ajv from 'ajv';
 import { createScenarioAjv } from './ajv-factory';
-import { CompileLaunchRequest, CompileLaunchResult, PayloadEnvelope } from '../contracts/launch';
+import {
+  CompileLaunchRequest,
+  CompileLaunchResult,
+  InitiatorPayload,
+  PayloadEnvelope
+} from '../contracts/launch';
+import { RunDescriptor } from '../contracts/run-descriptor';
 import { ParticipantAgentBinding } from '../contracts/example-agents';
 import {
   CommitmentDefinition,
@@ -102,7 +109,75 @@ export class CompilerService {
     const initiatorParticipantId =
       launch.initiatorParticipantId ?? kickoffTemplate?.[0]?.from ?? launch.participants[0]?.id;
 
+    const sessionId = randomUUID();
+    const participantIds = launch.participants.map((participant) => participant.id);
+
+    const tags = Array.from(
+      new Set(['example', packSlug, scenarioSlug, ...(execution.tags ?? []), ...(scenario.metadata.tags ?? [])])
+    );
+
+    const firstKickoff = kickoffTemplate?.[0];
+    const initiator: InitiatorPayload | undefined = initiatorParticipantId
+      ? {
+          participantId: initiatorParticipantId,
+          sessionStart: {
+            intent: String(metadataFromTemplate.intent ?? `${packSlug}/${scenarioSlug}`),
+            participants: participantIds,
+            ttlMs: launch.ttlMs,
+            modeVersion: launch.modeVersion,
+            configurationVersion: launch.configurationVersion,
+            policyVersion: launch.policyVersion,
+            context
+          },
+          kickoff: firstKickoff
+            ? {
+                messageType: inferMessageType(firstKickoff),
+                payloadType: firstKickoff.payloadEnvelope?.proto?.typeName,
+                payload: (firstKickoff.payload ??
+                  firstKickoff.payloadEnvelope?.json ??
+                  firstKickoff.payloadEnvelope?.proto?.value ??
+                  {}) as Record<string, unknown>
+              }
+            : undefined
+        }
+      : undefined;
+
+    const runDescriptor: RunDescriptor = {
+      mode: request.mode ?? 'sandbox',
+      runtime: {
+        kind: runtime.kind,
+        version: runtime.version
+      },
+      session: {
+        sessionId,
+        modeName: launch.modeName,
+        modeVersion: launch.modeVersion,
+        configurationVersion: launch.configurationVersion,
+        policyVersion: launch.policyVersion,
+        ttlMs: launch.ttlMs,
+        participants: participantIds.map((id) => ({ id })),
+        metadata: {
+          source: 'example-service',
+          sourceRef: request.scenarioRef,
+          scenarioRef: request.scenarioRef,
+          templateId: request.templateId ?? 'default',
+          environment: process.env.NODE_ENV ?? 'development'
+        }
+      },
+      execution: {
+        idempotencyKey: execution.idempotencyKey,
+        tags,
+        requester: {
+          actorId: execution.requester?.actorId ?? 'example-service',
+          actorType: execution.requester?.actorType ?? 'service'
+        }
+      }
+    };
+
     return {
+      sessionId,
+      initiator,
+      runDescriptor,
       executionRequest: {
         mode: request.mode ?? 'sandbox',
         runtime,
@@ -134,6 +209,7 @@ export class CompilerService {
             templateId: request.templateId ?? 'default',
             template: request.templateId ?? 'default',
             environment: process.env.NODE_ENV ?? 'development',
+            sessionId,
             ...metadataFromTemplate
           }
         },
@@ -148,9 +224,7 @@ export class CompilerService {
         })),
         execution: {
           idempotencyKey: execution.idempotencyKey,
-          tags: Array.from(
-            new Set(['example', packSlug, scenarioSlug, ...(execution.tags ?? []), ...(scenario.metadata.tags ?? [])])
-          ),
+          tags,
           requester: {
             actorId: execution.requester?.actorId ?? 'example-service',
             actorType: execution.requester?.actorType ?? 'service'

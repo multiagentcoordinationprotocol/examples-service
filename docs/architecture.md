@@ -5,8 +5,8 @@
 The MACP Example Showcase Service is a single NestJS service that intentionally combines three responsibilities for demo simplicity:
 
 1. **Catalog** — browse example scenario packs and their versions
-2. **Compiler** — validate user inputs and compile them into control-plane-ready `ExecutionRequest` payloads
-3. **Hosting** — resolve and bootstrap example agent bindings (manifest-only by default)
+2. **Compiler** — validate user inputs and compile them into two artifacts: a scenario-agnostic `RunDescriptor` for the control-plane and a scenario-specific payload (`scenarioSpec` + per-agent `AgentBootstrap`) for the agents themselves.
+3. **Hosting** — resolve and bootstrap example agent bindings (manifest-only by default), populating each spawned agent's bootstrap file with a per-agent Bearer token and the runtime's gRPC address (RFC-MACP-0004 §4).
 
 > This service is a showcase/examples layer used to demonstrate scenarios and sample agents for MACP. It intentionally combines catalog, compilation, and sample agent hosting for simplicity. It is not the production system boundary.
 
@@ -27,7 +27,7 @@ In a production deployment, these three things are separate:
 ```
 src/
   catalog/           → Pack/scenario listing + AgentProfileService (scenario coverage computation)
-  compiler/          → Input validation (AJV) + template substitution + ExecutionRequest assembly
+  compiler/          → Input validation (AJV) + template substitution + RunDescriptor + scenarioSpec assembly
   config/            → Environment-based configuration (global module)
   contracts/         → TypeScript interfaces — registry types, launch types, agent types
   control-plane/     → HTTP client for the control plane (/runs/validate, /runs)
@@ -86,7 +86,10 @@ POST /launch/compile
     → Merge defaults: schema < template < user inputs
     → Validate inputs against JSON Schema (AJV)
     → Substitute {{ inputs.* }} in context/metadata/kickoff/commitments templates
-    → Build ExecutionRequest (carries session.commitments[] when scenario declares them)
+    → Pre-allocate sessionId (UUID v4) and build:
+        runDescriptor      — scenario-agnostic payload sent to control-plane
+        scenarioSpec       — internal bookkeeping (commitments, policyHints, kickoff)
+        initiator          — SessionStart + kickoff payload for the one initiator agent
 ```
 
 ### 4. Run Example (Full Showcase Flow)
@@ -97,11 +100,15 @@ POST /examples/run
     1. Compile (same as above)
     2. Apply request overrides (tags, requester, runLabel) if provided
     3. Resolve agents → HostingService.resolve() → ProcessExampleAgentHostProvider
-       → Inject transport identities into ExecutionRequest participants
+       → Inject transport identities into the scenarioSpec participants
     4. Submit to control plane (optional)
-       → ControlPlaneClient.validate() + .createRun()
+       → ControlPlaneClient.validate(runDescriptor) + .createRun(runDescriptor)
+       → control-plane returns {runId, sessionId, traceId, status}
     5. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
-       → Workers poll control plane for events, send MACP messages back
+       → Each agent's bootstrap carries its own runtime.bearerToken + sessionId;
+         initiator's bootstrap also carries SessionStart + kickoff payload.
+       → Agents open gRPC channels to the runtime directly (RFC-MACP-0004 §4);
+         control-plane polls read-only for projection/SSE.
     6. Return compiled + hostedAgents + controlPlane status
 ```
 
@@ -140,15 +147,16 @@ schema defaults < template defaults < user inputs
 
 ## Agent Hosting Strategy
 
-The example agents use an **active process-backed** hosting strategy:
+The example agents use an **active process-backed** hosting strategy with direct-agent-auth (RFC-MACP-0004 §4):
 
 - Service resolves agent definitions from a hard-coded catalog (fraud, growth, compliance, risk)
-- Transport identities are injected into the ExecutionRequest before submission
-- After the control plane creates a run, lightweight Python and Node worker processes are spawned
-- Workers poll the control plane for run state and events (`GET /runs/:id/events`)
-- Workers send session-bound MACP messages back via `POST /runs/:id/messages`
+- Transport identities are injected into the compiled `scenarioSpec` participants
+- After the control plane creates a run and returns `sessionId`, lightweight Python and Node worker processes are spawned with per-agent bootstrap files
+- Workers read the bootstrap to obtain their own runtime gRPC address + Bearer token and open a dedicated `MacpClient` channel
+- Workers poll the control plane for run state and events (`GET /runs/:id/events`) — read-only observability
+- Workers emit envelopes (Proposal / Evaluation / Vote / Commitment / SessionStart / cancellation) via `macp-sdk-*` directly to the runtime — the control-plane never writes on their behalf
 - Each framework is demonstrated: LangGraph (fraud), LangChain (growth), CrewAI (compliance), custom (risk)
-- The `InMemoryExampleAgentHostProvider` is available as a manifest-only fallback for environments without Python
+- The `InMemoryExampleAgentHostProvider` is available as a manifest-only fallback for environments without Python (test + dev only)
 
 ## Caching
 

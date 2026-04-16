@@ -7,7 +7,7 @@ import { BootstrapPayload } from '../contracts/bootstrap.types';
 
 function buildBootstrap(): BootstrapPayload {
   return {
-    run: { runId: 'run-1' },
+    run: { runId: 'run-1', sessionId: 'sess-uuid-v4' },
     participant: { participantId: 'test-agent', agentId: 'test-agent', displayName: 'Test', role: 'test' },
     runtime: {
       baseUrl: 'http://localhost:3001',

@@ -144,7 +144,8 @@ Add an entry to `EXAMPLE_AGENT_DEFINITIONS` in `src/example-agents/example-agent
 ## Key Rules
 
 1. **Never let framework code leak into controllers or compiler** — all framework logic stays in adapters and worker packages
-2. **All outbound messages must use the MACP envelope format** — use `MacpMessageBuilder`
-3. **Workers must poll the control plane** — no custom backchannels
+2. **Outbound envelopes go through the SDK mode-helpers** — use `macp_sdk.DecisionSession.{evaluate,vote,commit,...}` (Python) or `macp-sdk-typescript` `DecisionSession` (Node). Do NOT construct envelopes by hand; do NOT POST to any control-plane `/runs/:id/messages` route (deleted).
+3. **Workers poll the control plane only for read-only observability** — run status, event stream for projection. All writes go over gRPC to the runtime via the per-agent Bearer token in the bootstrap.
 4. **Validate manifests before spawn** — bad config should fail fast with clear errors
 5. **Framework workers must gracefully fall back** when framework libraries aren't installed
+6. **Respect direct-agent-auth invariants** — identity flows through `bootstrap.runtime.bearerToken`; the SDK enforces `expectedSender` matching the authenticated sender (RFC-MACP-0004 §4). See `docs/direct-agent-auth.md` for the end-to-end flow.

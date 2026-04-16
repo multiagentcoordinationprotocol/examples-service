@@ -188,7 +188,11 @@ Get the launch form schema, defaults, agent previews, and runtime hints.
 
 ### `POST /launch/compile`
 
-Validate user inputs and compile them into a control-plane-ready ExecutionRequest.
+Validate user inputs and produce the twin outputs needed to run the scenario:
+`runDescriptor` (the scenario-agnostic payload sent to the control-plane),
+`executionRequest` (scenario-layer bookkeeping retained for agent bootstraps),
+`initiator` (SessionStart + kickoff for the one initiator agent), and the
+pre-allocated `sessionId` (UUID v4).
 
 **Request body:**
 ```json
@@ -209,13 +213,35 @@ Validate user inputs and compile them into a control-plane-ready ExecutionReques
 **Response:** `201`
 ```json
 {
+  "sessionId": "7c7a8f4d-0d4d-4f2b-8a9e-1f3a6b2e0c11",
+  "runDescriptor": {
+    "mode": "sandbox",
+    "runtime": { "kind": "rust", "version": "v1" },
+    "session": {
+      "sessionId": "7c7a8f4d-0d4d-4f2b-8a9e-1f3a6b2e0c11",
+      "modeName": "macp.mode.decision.v1",
+      "modeVersion": "1.0.0",
+      "configurationVersion": "config.default",
+      "policyVersion": "policy.default",
+      "ttlMs": 300000,
+      "participants": [{ "id": "fraud-agent" }, { "id": "risk-agent" }],
+      "metadata": { "source": "example-service", "scenarioRef": "fraud/high-value-new-device@1.0.0" }
+    },
+    "execution": { "tags": ["example","fraud"], "requester": { "actorId": "example-service", "actorType": "service" } }
+  },
+  "initiator": {
+    "participantId": "risk-agent",
+    "sessionStart": { "intent": "...", "participants": ["fraud-agent","risk-agent"], "ttlMs": 300000, "modeVersion": "1.0.0", "configurationVersion": "config.default", "policyVersion": "policy.default", "context": { "transactionAmount": 3200 } },
+    "kickoff": { "messageType": "Proposal", "payload": { "option": "review" } }
+  },
   "executionRequest": {
     "mode": "sandbox",
     "runtime": { "kind": "rust", "version": "v1" },
     "session": {
       "modeName": "macp.mode.decision.v1",
       "policyVersion": "policy.default",
-      "participants": [ ... ],
+      "policyHints": { "type": "majority", "threshold": 0.5 },
+      "participants": [ /* scenario-layer detail, incl. role, metadata */ ],
       "commitments": [
         {
           "id": "fraud-risk-assessed",
@@ -231,7 +257,7 @@ Validate user inputs and compile them into a control-plane-ready ExecutionReques
         }
       ]
     },
-    "kickoff": [ ... ]
+    "kickoff": [ /* ... */ ]
   },
   "display": {
     "title": "High Value Purchase From New Device",

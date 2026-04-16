@@ -54,6 +54,12 @@ export interface ParticipantAgentBinding {
 
 export interface ExampleAgentRunContext {
   runId: string;
+  /**
+   * Pre-allocated shared session id (UUID v4) that every agent in the run
+   * receives via its bootstrap. Populated when examples-service owns session
+   * id allocation (direct-agent-auth); may be empty during legacy launches.
+   */
+  sessionId?: string;
   traceId?: string;
   scenarioRef: string;
   modeName: string;
@@ -74,4 +80,27 @@ export interface ExampleAgentRunContext {
   sessionContext?: Record<string, unknown>;
   participants: string[];
   initiatorParticipantId?: string;
+  /**
+   * Bundled initiator payload. Only the agent whose `participantId` equals
+   * `initiator.participantId` receives `initiator.sessionStart` / `initiator.kickoff`
+   * in its bootstrap.
+   */
+  initiator?: {
+    participantId: string;
+    sessionStart: {
+      intent: string;
+      participants: string[];
+      ttlMs: number;
+      modeVersion: string;
+      configurationVersion: string;
+      policyVersion?: string;
+      context?: Record<string, unknown>;
+      roots?: Array<{ uri: string; name?: string }>;
+    };
+    kickoff?: {
+      messageType: string;
+      payloadType?: string;
+      payload: Record<string, unknown>;
+    };
+  };
 }

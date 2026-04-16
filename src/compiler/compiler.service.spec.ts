@@ -441,6 +441,81 @@ describe('CompilerService', () => {
     });
   });
 
+  describe('compile - runDescriptor + initiator (direct-agent-auth)', () => {
+    it('emits a runDescriptor stripped of scenario-specific fields', async () => {
+      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 500, isVip: false }
+      });
+
+      expect(result.runDescriptor.session.sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      );
+      expect(result.runDescriptor.mode).toBe('sandbox');
+      expect(result.runDescriptor.session.modeName).toBe('test.mode');
+      expect(result.runDescriptor.session.policyVersion).toBe('policy.default');
+      expect(result.runDescriptor.session.participants).toEqual([{ id: 'agent-1' }]);
+      expect(result.runDescriptor.session.ttlMs).toBe(300000);
+      expect(result.runDescriptor.execution?.requester?.actorId).toBe('example-service');
+
+      // Scenario-specific fields must NOT appear on the generic descriptor.
+      const sessionRecord = result.runDescriptor.session as unknown as Record<string, unknown>;
+      expect(sessionRecord.policyHints).toBeUndefined();
+      expect(sessionRecord.commitments).toBeUndefined();
+      expect(sessionRecord.initiatorParticipantId).toBeUndefined();
+      expect((result.runDescriptor as unknown as Record<string, unknown>).kickoff).toBeUndefined();
+    });
+
+    it('pre-allocates a shared sessionId used by executionRequest.session.metadata', async () => {
+      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.sessionId).toBe(result.runDescriptor.session.sessionId);
+      expect(result.executionRequest.session.metadata?.sessionId).toBe(result.sessionId);
+    });
+
+    it('produces an initiator payload with SessionStart + kickoff data for the initiator participant', async () => {
+      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.initiator).toBeDefined();
+      expect(result.initiator?.participantId).toBe('agent-1');
+      expect(result.initiator?.sessionStart.participants).toEqual(['agent-1']);
+      expect(result.initiator?.sessionStart.ttlMs).toBe(300000);
+      expect(result.initiator?.sessionStart.modeVersion).toBe('1.0.0');
+      expect(result.initiator?.kickoff?.messageType).toBe('Proposal');
+      expect(result.initiator?.kickoff?.payload).toEqual({ goal: 'test' });
+    });
+
+    it('omits initiator.kickoff when the scenario has no kickoff template', async () => {
+      const noKickoffScenario: ScenarioVersionFile = {
+        ...mockScenario,
+        spec: {
+          ...mockScenario.spec,
+          launch: { ...mockScenario.spec.launch, kickoffTemplate: undefined }
+        }
+      };
+      mockIndex.getScenarioVersion.mockResolvedValue(noKickoffScenario);
+
+      const result = await service.compile({
+        scenarioRef: 'fraud/test@1.0.0',
+        inputs: { amount: 100, isVip: true }
+      });
+
+      expect(result.initiator?.kickoff).toBeUndefined();
+    });
+  });
+
   describe('compile - display', () => {
     it('should include display metadata', async () => {
       mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);

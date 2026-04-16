@@ -15,7 +15,33 @@ describe('ExampleRunService', () => {
   let config: AppConfigService;
   let policyLoader: jest.Mocked<PolicyLoaderService>;
 
+  const sessionId = '00000000-0000-4000-8000-000000000001';
   const compiled: CompileLaunchResult = {
+    sessionId,
+    runDescriptor: {
+      mode: 'sandbox',
+      runtime: { kind: 'rust' },
+      session: {
+        sessionId,
+        modeName: 'macp.mode.decision.v1',
+        modeVersion: '1.0.0',
+        configurationVersion: 'config.default',
+        policyVersion: 'policy.default',
+        ttlMs: 300000,
+        participants: [{ id: 'risk-agent' }]
+      }
+    },
+    initiator: {
+      participantId: 'risk-agent',
+      sessionStart: {
+        intent: 'fraud/high-value-new-device',
+        participants: ['risk-agent'],
+        ttlMs: 300000,
+        modeVersion: '1.0.0',
+        configurationVersion: 'config.default',
+        policyVersion: 'policy.default'
+      }
+    },
     executionRequest: {
       mode: 'sandbox',
       runtime: { kind: 'rust', version: 'v1' },
@@ -74,7 +100,9 @@ describe('ExampleRunService', () => {
     } as unknown as jest.Mocked<HostingService>;
     controlPlane = {
       validate: jest.fn().mockResolvedValue(undefined),
-      createRun: jest.fn().mockResolvedValue({ runId: 'run-1', status: 'queued', traceId: 'trace-1' }),
+      createRun: jest
+        .fn()
+        .mockResolvedValue({ runId: 'run-1', sessionId, status: 'queued', traceId: 'trace-1' }),
       registerPolicy: jest.fn().mockResolvedValue({ ok: true }),
       baseUrl: 'http://localhost:3001'
     } as unknown as jest.Mocked<ControlPlaneClient>;
@@ -113,10 +141,11 @@ describe('ExampleRunService', () => {
     });
 
     expect(hosting.resolve).toHaveBeenCalledWith(compiled);
-    expect(controlPlane.validate).toHaveBeenCalledWith(compiled.executionRequest);
-    expect(controlPlane.createRun).toHaveBeenCalledWith(compiled.executionRequest);
+    expect(controlPlane.validate).toHaveBeenCalledWith(compiled.runDescriptor);
+    expect(controlPlane.createRun).toHaveBeenCalledWith(compiled.runDescriptor);
     expect(hosting.attach).toHaveBeenCalledWith(compiled, {
       runId: 'run-1',
+      sessionId,
       traceId: 'trace-1',
       scenarioRef: 'fraud/high-value-new-device@1.0.0',
       modeName: 'macp.mode.decision.v1',
@@ -133,7 +162,8 @@ describe('ExampleRunService', () => {
       ttlMs: 300000,
       sessionContext: undefined,
       participants: ['risk-agent'],
-      initiatorParticipantId: 'risk-agent'
+      initiatorParticipantId: 'risk-agent',
+      initiator: compiled.initiator
     });
     expect(result.hostedAgents).toEqual(attachedAgents);
     expect(result.controlPlane?.runId).toBe('run-1');
@@ -220,6 +250,43 @@ describe('ExampleRunService', () => {
     // Should still proceed to validate and createRun
     expect(controlPlane.validate).toHaveBeenCalled();
     expect(result.controlPlane?.submitted).toBe(true);
+  });
+
+  describe('applyRequestOverrides', () => {
+    it('merges new tags into compiled.executionRequest.execution.tags without dropping existing ones', async () => {
+      const result = await service.run({
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        inputs: {},
+        tags: ['extra-tag', 'owner:qa']
+      });
+
+      const executionTags = result.compiled.executionRequest.execution?.tags ?? [];
+      expect(executionTags).toEqual(expect.arrayContaining(['extra-tag', 'owner:qa']));
+    });
+
+    it('overrides requester when provided', async () => {
+      const result = await service.run({
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        inputs: {},
+        requester: { actorId: 'qa-bot', actorType: 'service' }
+      });
+
+      expect(result.compiled.executionRequest.execution?.requester).toEqual({
+        actorId: 'qa-bot',
+        actorType: 'service'
+      });
+    });
+
+    it('stamps runLabel onto executionRequest.session.metadata.runLabel', async () => {
+      const result = await service.run({
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        inputs: {},
+        runLabel: 'nightly-2026-04-15'
+      });
+
+      expect(result.compiled.executionRequest.session.metadata?.runLabel).toBe('nightly-2026-04-15');
+    });
+
   });
 
   it('skips policy registration when registerPoliciesOnLaunch is false', async () => {

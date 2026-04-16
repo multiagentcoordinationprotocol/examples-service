@@ -78,8 +78,8 @@ Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BO
 | Hosting Service | `src/hosting/hosting.service.ts` | Two-phase resolve + attach orchestration |
 | Agent Profile Service | `src/catalog/agent-profile.service.ts` | Builds agent profiles with registry-scanned scenario coverage |
 | Agent Catalog | `src/example-agents/example-agent-catalog.service.ts` | Hard-coded agent definitions (4 agents) |
-| Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python SDK: bootstrap, client, message builder, Participant abstraction, PolicyStrategy |
-| Node Worker SDK | `agents/sdk/node/` | Shared Node SDK: same contract plus Participant, PolicyStrategy, PolicyHints |
+| Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python worker SDK: bootstrap loader, read-only control-plane client (get_run/get_events), Participant abstraction + PolicyStrategy. Emission delegates to `macp_sdk.DecisionSession` over direct gRPC. |
+| Node Worker Runtime | `src/example-agents/runtime/` | In-tree TS modules for the custom (Node) Risk Agent: bootstrap loader, cancel-callback server, policy strategy, read-only CP observability client. Emission uses `macp-sdk-typescript` directly. |
 | Policy Strategy | `src/example-agents/runtime/policy-strategy.ts` | Policy-aware decision logic for the coordinator (quorum, voting, veto) |
 
 ## Framework Workers
@@ -95,11 +95,14 @@ Each worker gracefully falls back when its framework library is not installed, p
 
 ## SDK Participant Abstraction
 
-All workers use the **Participant** SDK abstraction, which provides:
-- **Handler registration** — `@participant.on('Proposal')` (Python) or `participant.on('Proposal', handler)` (Node)
-- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.object()`, `ctx.actions.vote()`, `ctx.actions.commit()`
-- **Poll-based event loop** — `participant.run()` handles polling, terminal detection, and deadline enforcement
-- **Event-to-handler dispatch** — `proposal.created` → `'Proposal'`, `proposal.updated` → handler key from `messageType`
+Python workers use the **Participant** SDK abstraction (`macp_worker_sdk.Participant`), which provides:
+- **Handler registration** — `@participant.on('Proposal')`
+- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.object()`, `ctx.actions.vote()`, `ctx.actions.commit()`.
+  Under the hood, `Actions` holds a `macp_sdk.DecisionSession` and delegates to its mode-helpers; envelopes travel over the agent's own gRPC channel (RFC-MACP-0004 §4).
+- **Poll-based event loop** — `participant.run()` polls the control-plane (read-only) for canonical events, dispatches to handlers, and enforces deadlines.
+- **Event-to-handler dispatch** — `proposal.created` → `'Proposal'`, `proposal.updated` → handler key from `messageType`.
+
+The Node risk-agent does not use Participant; it constructs `MacpClient` + `DecisionSession` directly in `src/example-agents/runtime/risk-decider.worker.ts` for tighter control over quorum timing.
 
 The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicyStrategy(policyHints)`) for policy-driven:
 - **Quorum**: `unanimous` waits for all; `majority`/`supermajority` needs threshold; `none` needs ≥1 response
@@ -113,7 +116,9 @@ The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicySt
 ```
 scenario.yaml (policyVersion + policyHints)
   → template override (optional)
-  → CompilerService → ExecutionRequest.session.policyHints
-  → BootstrapPayload.execution.policyHints
+  → CompilerService → scenarioSpec.session.policyHints (internal scenario bookkeeping)
+  → BootstrapPayload.execution.policyHints (threaded into every agent bootstrap)
   → Worker reads policyHints → PolicyStrategy.decide()
 ```
+
+Note: `policyHints` do NOT travel to the control-plane. They live entirely in the scenario layer (examples-service) and are consumed by agent workers via their bootstrap file. The control-plane's `RunDescriptor` contract is scenario-agnostic — see `direct-agent-auth.md` for the full flow.

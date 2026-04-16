@@ -69,14 +69,12 @@ jobs:
 
       - name: Validate Python workers
         run: |
-          python3 -m py_compile agents/python/worker_common.py
-          python3 -m py_compile agents/python/langgraph_fraud_agent.py
-          python3 -m py_compile agents/python/langchain_growth_agent.py
-          python3 -m py_compile agents/python/crewai_compliance_agent.py
           python3 -m py_compile agents/sdk/python/macp_worker_sdk/__init__.py
           python3 -m py_compile agents/sdk/python/macp_worker_sdk/bootstrap.py
           python3 -m py_compile agents/sdk/python/macp_worker_sdk/client.py
           python3 -m py_compile agents/sdk/python/macp_worker_sdk/message_builder.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/participant.py
+          python3 -m py_compile agents/sdk/python/macp_worker_sdk/policy_strategy.py
           python3 -m py_compile agents/langgraph_worker/main.py
           python3 -m py_compile agents/langgraph_worker/graph.py
           python3 -m py_compile agents/langgraph_worker/mappers.py

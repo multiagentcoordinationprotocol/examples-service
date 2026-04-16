@@ -51,7 +51,7 @@ export class LaunchSupervisor implements OnModuleDestroy {
     const key = this.makeKey(runId, participantId);
 
     const existing = this.processes.get(key);
-    if (existing && existing.child.pid && existing.healthStatus !== 'stopped') {
+    if (existing?.child.pid && existing.healthStatus !== 'stopped') {
       this.logger.log(`process already running for ${key} (pid=${existing.child.pid})`);
       return existing;
     }
@@ -222,7 +222,7 @@ export class LaunchSupervisor implements OnModuleDestroy {
   private setupStartupTimeout(key: string, logPrefix: string, timeoutMs: number): void {
     setTimeout(() => {
       const record = this.processes.get(key);
-      if (record && record.healthStatus === 'starting') {
+      if (record?.healthStatus === 'starting') {
         record.healthStatus = 'healthy';
         this.logger.log(`${logPrefix} assumed healthy after ${timeoutMs}ms startup window`);
       }

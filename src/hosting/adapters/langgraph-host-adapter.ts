@@ -4,6 +4,7 @@ import {
   PreparedLaunch
 } from '../contracts/host-adapter.types';
 import { AgentFramework, AgentManifest, ManifestValidationResult } from '../contracts/manifest.types';
+import { buildAgentEnv } from './agent-env';
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 30000;
 
@@ -53,16 +54,13 @@ export class LangGraphHostAdapter implements AgentHostAdapter {
         ? ['-m', entrypoint, ...(manifest.host?.args ?? [])]
         : [entrypoint, ...(manifest.host?.args ?? [])];
 
+    const shared = buildAgentEnv(bootstrap, 'langgraph');
     const env: Record<string, string> = {
       ...process.env as Record<string, string>,
       ...(manifest.host?.env ?? {}),
       PYTHONUNBUFFERED: '1',
-      MACP_BOOTSTRAP_FILE: '',
-      MACP_CONTROL_PLANE_URL: bootstrap.runtime.baseUrl,
-      MACP_LOG_LEVEL: 'info',
-      MACP_FRAMEWORK: 'langgraph',
-      MACP_PARTICIPANT_ID: bootstrap.participant.participantId,
-      MACP_RUN_ID: bootstrap.run.runId
+      ...shared,
+      EXAMPLE_AGENT_ENTRYPOINT: manifest.entrypoint.value
     };
 
     return {

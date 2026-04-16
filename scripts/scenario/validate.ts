@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadYamlWithIncludes } from '../../src/registry/include-resolver';
 import { createScenarioAjv } from '../../src/compiler/ajv-factory';
-import { extractSchemaDefaults, deepMerge } from '../../src/compiler/template-resolver';
+import { extractSchemaDefaults } from '../../src/compiler/template-resolver';
 import { ScenarioVersionFile, ScenarioTemplateFile } from '../../src/contracts/registry';
 import { ExampleAgentCatalogService } from '../../src/example-agents/example-agent-catalog.service';
 

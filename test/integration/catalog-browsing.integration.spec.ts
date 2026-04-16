@@ -22,11 +22,16 @@ describe('Catalog Browsing (integration)', () => {
       expect(slugs).toContain('claims');
     });
 
-    it('each pack has slug and name', async () => {
+    it('each pack has non-empty slug + name', async () => {
       const packs = await ctx.client.listPacks();
       for (const pack of packs) {
-        expect(pack.slug).toBeDefined();
-        expect(pack.name).toBeDefined();
+        expect(typeof pack.slug).toBe('string');
+        expect(pack.slug.length).toBeGreaterThan(0);
+        expect(typeof pack.name).toBe('string');
+        expect(pack.name.length).toBeGreaterThan(0);
+        if (pack.description !== undefined) {
+          expect(typeof pack.description).toBe('string');
+        }
       }
     });
   });
@@ -65,12 +70,13 @@ describe('Catalog Browsing (integration)', () => {
     it('returns launch schema for fraud scenario', async () => {
       const schema = await ctx.client.getLaunchSchema('fraud', 'high-value-new-device', '1.0.0');
       expect(schema.scenarioRef).toBe('fraud/high-value-new-device@1.0.0');
-      expect(schema.formSchema).toBeDefined();
-      expect(schema.defaults).toBeDefined();
+      expect((schema.formSchema as { type?: string }).type).toBe('object');
+      expect((schema.formSchema as { properties?: unknown }).properties).toBeTruthy();
+      expect(schema.defaults).toEqual(expect.objectContaining({ transactionAmount: expect.any(Number) }));
       expect(schema.participants).toHaveLength(4);
       expect(schema.agents).toHaveLength(4);
       expect(schema.runtime).toEqual({ kind: 'rust', version: 'v1' });
-      expect(schema.expectedDecisionKinds).toBeDefined();
+      expect(schema.expectedDecisionKinds).toEqual(expect.arrayContaining(['approve', 'decline']));
     });
 
     it('returns template-specific schema with ?template=strict-risk', async () => {
@@ -112,14 +118,18 @@ describe('Catalog Browsing (integration)', () => {
       expect(packSlugs).toContain('claims');
     });
 
-    it('each scenario has packSlug and standard fields', async () => {
+    it('each scenario has non-empty packSlug + scenario + name + at least one version + templates array', async () => {
       const { body } = await ctx.client.requestRaw('GET', '/scenarios');
       for (const scenario of body as any[]) {
-        expect(scenario.packSlug).toBeDefined();
-        expect(scenario.scenario).toBeDefined();
-        expect(scenario.name).toBeDefined();
-        expect(scenario.versions).toBeDefined();
-        expect(scenario.templates).toBeDefined();
+        expect(typeof scenario.packSlug).toBe('string');
+        expect(scenario.packSlug.length).toBeGreaterThan(0);
+        expect(typeof scenario.scenario).toBe('string');
+        expect(scenario.scenario.length).toBeGreaterThan(0);
+        expect(typeof scenario.name).toBe('string');
+        expect(scenario.name.length).toBeGreaterThan(0);
+        expect(Array.isArray(scenario.versions)).toBe(true);
+        expect(scenario.versions.length).toBeGreaterThanOrEqual(1);
+        expect(Array.isArray(scenario.templates)).toBe(true);
       }
     });
   });

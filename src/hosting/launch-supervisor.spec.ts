@@ -31,7 +31,7 @@ function buildManifest(): AgentManifest {
 
 function buildBootstrap(): BootstrapPayload {
   return {
-    run: { runId: 'run-1', traceId: 'trace-1' },
+    run: { runId: 'run-1', sessionId: 'sess-uuid-v4', traceId: 'trace-1' },
     participant: { participantId: 'fraud-agent', agentId: 'fraud-agent', displayName: 'Fraud Agent', role: 'fraud' },
     runtime: {
       baseUrl: 'http://localhost:3001',

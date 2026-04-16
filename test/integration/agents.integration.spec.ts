@@ -19,20 +19,33 @@ describe('Agents (integration)', () => {
       expect(body).toHaveLength(4);
     });
 
-    it('each agent has correct fields', async () => {
+    it('each agent has the expected non-empty fields', async () => {
       const { body } = await ctx.client.requestRaw('GET', '/agents');
+      const validFrameworks = ['langgraph', 'langchain', 'crewai', 'custom'] as const;
+      const validStrategies = ['external', 'in-memory'] as const;
+      const validModes = ['attached', 'deferred'] as const;
+
       for (const agent of body as any[]) {
-        expect(agent.agentRef).toBeDefined();
-        expect(agent.name).toBeDefined();
-        expect(agent.role).toBeDefined();
-        expect(agent.framework).toBeDefined();
-        expect(agent.transportIdentity).toContain('agent://');
-        expect(agent.entrypoint).toBeDefined();
-        expect(agent.bootstrapStrategy).toBeDefined();
-        expect(agent.bootstrapMode).toBeDefined();
-        expect(agent.scenarios).toBeDefined();
+        expect(typeof agent.agentRef).toBe('string');
+        expect(agent.agentRef.length).toBeGreaterThan(0);
+        expect(typeof agent.name).toBe('string');
+        expect(agent.name.length).toBeGreaterThan(0);
+        expect(['fraud', 'growth', 'compliance', 'coordinator', 'risk']).toContain(agent.role);
+        expect(validFrameworks).toContain(agent.framework);
+        expect(agent.transportIdentity).toBe(`agent://${agent.agentRef}`);
+        expect(typeof agent.entrypoint).toBe('string');
+        expect(agent.entrypoint.length).toBeGreaterThan(0);
+        expect(validStrategies).toContain(agent.bootstrapStrategy);
+        expect(validModes).toContain(agent.bootstrapMode);
         expect(Array.isArray(agent.scenarios)).toBe(true);
-        expect(agent.metrics).toBeDefined();
+        expect(agent.metrics).toEqual(
+          expect.objectContaining({
+            runs: expect.any(Number),
+            signals: expect.any(Number),
+            averageLatencyMs: expect.any(Number),
+            averageConfidence: expect.any(Number)
+          })
+        );
       }
     });
 
@@ -56,8 +69,8 @@ describe('Agents (integration)', () => {
     it('agents have descriptions', async () => {
       const { body } = await ctx.client.requestRaw('GET', '/agents');
       for (const agent of body as any[]) {
-        expect(agent.description).toBeDefined();
         expect(typeof agent.description).toBe('string');
+        expect(agent.description.length).toBeGreaterThan(0);
       }
     });
 

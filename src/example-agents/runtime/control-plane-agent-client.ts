@@ -1,7 +1,16 @@
+/**
+ * Read-only HTTP client used by spawned agents to poll the control-plane for
+ * run state and canonical events. Envelope emission MUST go through the
+ * MACP SDK directly to the runtime (RFC-MACP-0004 §4 + RFC-MACP-0001 §5.3).
+ * The write path to the control-plane has been removed (ES-8); the
+ * observer-invariant guard at `src/observer-invariant.spec.ts` fails CI if
+ * anyone reintroduces it.
+ */
 type JsonRecord = Record<string, unknown>;
 
 export interface AgentRuntimeContext {
   runId: string;
+  sessionId?: string;
   traceId?: string;
   scenarioRef: string;
   modeName: string;
@@ -91,6 +100,8 @@ export function parseStringArray(raw: string | undefined): string[] {
 export function loadAgentRuntimeContext(): AgentRuntimeContext {
   return {
     runId: readEnv('EXAMPLE_AGENT_RUN_ID'),
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty string must fall through to MACP_SESSION_ID
+    sessionId: process.env.EXAMPLE_AGENT_SESSION_ID || process.env.MACP_SESSION_ID,
     traceId: process.env.EXAMPLE_AGENT_TRACE_ID,
     scenarioRef: readEnv('EXAMPLE_AGENT_SCENARIO_REF'),
     modeName: readEnv('EXAMPLE_AGENT_MODE_NAME'),
@@ -109,6 +120,9 @@ export function loadAgentRuntimeContext(): AgentRuntimeContext {
   };
 }
 
+/**
+ * Read-only observability client. Envelope emission lives in `macp-sdk-typescript`.
+ */
 export class ControlPlaneAgentClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
@@ -117,6 +131,7 @@ export class ControlPlaneAgentClient {
   constructor() {
     this.baseUrl = readEnv('CONTROL_PLANE_BASE_URL').replace(/\/$/, '');
     this.timeoutMs = Number(readEnv('CONTROL_PLANE_TIMEOUT_MS', '10000'));
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty string must fall back to the default
     const apiKey = process.env.CONTROL_PLANE_API_KEY?.trim() || 'example-agent';
     this.authorization = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
   }
@@ -129,11 +144,7 @@ export class ControlPlaneAgentClient {
     return this.request<CanonicalEvent[]>('GET', `/runs/${runId}/events?afterSeq=${afterSeq}&limit=${limit}`);
   }
 
-  async sendMessage(runId: string, body: JsonRecord): Promise<JsonRecord> {
-    return this.request<JsonRecord>('POST', `/runs/${runId}/messages`, body);
-  }
-
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: JsonRecord): Promise<T> {
+  private async request<T>(method: 'GET', path: string): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -141,10 +152,8 @@ export class ControlPlaneAgentClient {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers: {
-          authorization: this.authorization,
-          ...(body ? { 'content-type': 'application/json' } : {})
+          authorization: this.authorization
         },
-        body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal
       });
 
@@ -160,16 +169,6 @@ export class ControlPlaneAgentClient {
       clearTimeout(timer);
     }
   }
-}
-
-export function buildProtoEnvelope(typeName: string, value: JsonRecord): JsonRecord {
-  return {
-    encoding: 'proto',
-    proto: {
-      typeName,
-      value
-    }
-  };
 }
 
 export function extractProposalId(event: CanonicalEvent): string | undefined {
@@ -192,7 +191,6 @@ export function extractDecodedPayload(event: CanonicalEvent): JsonRecord {
   const data = event.data ?? {};
   let payload = (data.decodedPayload as JsonRecord | undefined) ?? (data.payload as JsonRecord | undefined);
   if (!payload) {
-    // Fall back to payloadDescriptor.proto.value (real runtime format)
     const descriptor = data.payloadDescriptor as JsonRecord | undefined;
     const proto = descriptor?.proto as JsonRecord | undefined;
     payload = (proto?.value as JsonRecord | undefined) ?? {};
@@ -213,9 +211,4 @@ export function isPolicyDenial(event: CanonicalEvent): boolean {
   );
 }
 
-export function logAgent(message: string, details?: JsonRecord): void {
-  const payload = details
-    ? { ts: new Date().toISOString(), message, ...details }
-    : { ts: new Date().toISOString(), message };
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
-}
+export { logAgent } from './log-agent';

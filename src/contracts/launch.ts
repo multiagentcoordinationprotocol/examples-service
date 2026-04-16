@@ -1,7 +1,16 @@
 import { HostedExampleAgent, ParticipantAgentBinding, ExampleAgentSummary } from './example-agents';
-import { CommitmentDefinition, KickoffKind, PayloadEncoding, RuntimeSelectionTemplate } from './registry';
+import {
+  CommitmentDefinition,
+  KickoffKind,
+  PayloadEnvelopeTemplate,
+  RuntimeSelectionTemplate
+} from './registry';
+import { RunDescriptor } from './run-descriptor';
 
 export type { CommitmentDefinition };
+export type { RunDescriptor };
+/** Alias retained for callers that imported `PayloadEnvelope`. Structurally identical to `PayloadEnvelopeTemplate`. */
+export type PayloadEnvelope = PayloadEnvelopeTemplate;
 
 export interface LaunchSchemaResponse {
   scenarioRef: string;
@@ -42,18 +51,6 @@ export interface CompileLaunchRequest {
   templateId?: string;
   inputs: Record<string, unknown>;
   mode?: 'live' | 'sandbox';
-}
-
-export interface PayloadEnvelope {
-  encoding: PayloadEncoding;
-  mediaType?: string;
-  json?: Record<string, unknown>;
-  text?: string;
-  base64?: string;
-  proto?: {
-    typeName: string;
-    value: Record<string, unknown>;
-  };
 }
 
 export interface ExecutionRequest {
@@ -109,8 +106,44 @@ export interface ExecutionRequest {
   };
 }
 
+/**
+ * Initiator-only compile output: the payload the initiator agent needs to
+ * emit the first SessionStart envelope and the first mode-specific envelope
+ * (e.g. Proposal). Non-initiator agents do not receive this.
+ */
+export interface InitiatorPayload {
+  participantId: string;
+  sessionStart: {
+    intent: string;
+    participants: string[];
+    ttlMs: number;
+    modeVersion: string;
+    configurationVersion: string;
+    policyVersion?: string;
+    context?: Record<string, unknown>;
+    roots?: Array<{ uri: string; name?: string }>;
+  };
+  kickoff?: {
+    messageType: string;
+    /** Proto typeName the agent should encode the payload with. */
+    payloadType?: string;
+    payload: Record<string, unknown>;
+  };
+}
+
 export interface CompileLaunchResult {
+  /**
+   * Legacy control-plane contract. Retained verbatim until CP-1 lands; after
+   * that, this collapses into a thin adapter over `runDescriptor` + the
+   * initiator payload.
+   */
   executionRequest: ExecutionRequest;
+  /** Forward-compatible generic descriptor for `POST /runs` (CP-1). */
+  runDescriptor: RunDescriptor;
+  /** Present iff the scenario has a kickoff and an identifiable initiator. */
+  initiator?: InitiatorPayload;
+  /** Shared session id pre-allocated at compile time (UUID v4). */
+  sessionId: string;
   display: {
     title: string;
     scenarioRef: string;

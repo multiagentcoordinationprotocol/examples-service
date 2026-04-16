@@ -1,5 +1,4 @@
 import {
-  buildProtoEnvelope,
   extractDecodedPayload,
   extractMessageType,
   extractProposalId,
@@ -144,19 +143,6 @@ describe('control-plane-agent-client', () => {
       delete process.env.EXAMPLE_AGENT_POLICY_HINTS_JSON;
       const context = loadAgentRuntimeContext();
       expect(context.policyHints).toEqual({});
-    });
-  });
-
-  describe('buildProtoEnvelope', () => {
-    it('produces correct envelope structure', () => {
-      const envelope = buildProtoEnvelope('macp.v1.TestPayload', { key: 'value' });
-      expect(envelope).toEqual({
-        encoding: 'proto',
-        proto: {
-          typeName: 'macp.v1.TestPayload',
-          value: { key: 'value' }
-        }
-      });
     });
   });
 

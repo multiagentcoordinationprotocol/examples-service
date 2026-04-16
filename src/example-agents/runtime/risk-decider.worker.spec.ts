@@ -1,11 +1,45 @@
 import { AgentRuntimeContext, CanonicalEvent } from './control-plane-agent-client';
+import { BootstrapPayload } from '../../hosting/contracts/bootstrap.types';
 
-// ── mock setup ──────────────────────────────────────────────────────
+// ── SDK mocks ────────────────────────────────────────────────────────
+const mockStart = jest.fn();
+const mockPropose = jest.fn();
+const mockVote = jest.fn();
+const mockCommit = jest.fn();
+const mockCancel = jest.fn();
+const mockInitialize = jest.fn().mockResolvedValue(undefined);
+const mockClose = jest.fn();
+const mockDecisionSessionCtor = jest.fn();
+const mockMacpClientCtor = jest.fn();
+const mockAuthBearer = jest.fn((token: string, opts?: unknown) => ({ token, opts }));
+
+jest.mock('macp-sdk-typescript', () => ({
+  Auth: { bearer: (...args: unknown[]) => mockAuthBearer(...(args as [string, unknown])) },
+  MacpClient: jest.fn().mockImplementation((opts: unknown) => {
+    mockMacpClientCtor(opts);
+    return { initialize: mockInitialize, close: mockClose, auth: {} };
+  }),
+  DecisionSession: jest.fn().mockImplementation((client: unknown, opts: unknown) => {
+    mockDecisionSessionCtor(client, opts);
+    return {
+      start: mockStart,
+      propose: mockPropose,
+      vote: mockVote,
+      commit: mockCommit,
+      cancel: mockCancel
+    };
+  })
+}));
+
+// ── worker-side mocks ────────────────────────────────────────────────
 const mockGetRun = jest.fn();
 const mockGetEvents = jest.fn();
-const mockSendMessage = jest.fn();
 const mockLogAgent = jest.fn();
 const mockLoadContext = jest.fn();
+const mockLoadBootstrap = jest.fn();
+const mockStartCancelServer = jest.fn((..._args: unknown[]) =>
+  Promise.resolve({ address: 'http://127.0.0.1:0/agent/cancel', close: () => Promise.resolve() })
+);
 
 jest.mock('./control-plane-agent-client', () => {
   const actual = jest.requireActual('./control-plane-agent-client');
@@ -13,18 +47,65 @@ jest.mock('./control-plane-agent-client', () => {
     ...actual,
     ControlPlaneAgentClient: jest.fn(() => ({
       getRun: mockGetRun,
-      getEvents: mockGetEvents,
-      sendMessage: mockSendMessage
+      getEvents: mockGetEvents
     })),
     loadAgentRuntimeContext: (...args: unknown[]) => mockLoadContext(...args),
     logAgent: (...args: unknown[]) => mockLogAgent(...args)
   };
 });
 
+jest.mock('./bootstrap-loader', () => ({
+  loadBootstrapPayload: () => mockLoadBootstrap(),
+  hasDirectRuntimeIdentity: (b: BootstrapPayload) =>
+    Boolean(b.runtime.address && b.runtime.bearerToken),
+  isInitiator: (b: BootstrapPayload) => Boolean(b.initiator)
+}));
+
+jest.mock('./cancel-callback-server', () => ({
+  startCancelCallbackServer: (opts: unknown) => mockStartCancelServer(opts)
+}));
+
 // ── helpers ─────────────────────────────────────────────────────────
+function defaultBootstrap(overrides: Partial<BootstrapPayload> = {}): BootstrapPayload {
+  return {
+    run: { runId: 'run-1', sessionId: 'sess-uuid-v4', traceId: 'trace-1' },
+    participant: {
+      participantId: 'risk-coordinator',
+      agentId: 'risk-agent',
+      displayName: 'Risk Agent',
+      role: 'coordinator'
+    },
+    runtime: {
+      address: 'runtime.local:50051',
+      bearerToken: 'tok-risk',
+      tls: true,
+      allowInsecure: false,
+      baseUrl: 'http://localhost:3001',
+      messageEndpoint: '/runs/run-1/messages',
+      eventsEndpoint: '/runs/run-1/events',
+      timeoutMs: 10000,
+      joinMetadata: { transport: 'grpc', messageFormat: 'macp' }
+    },
+    execution: {
+      scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      modeName: 'macp.mode.decision.v1',
+      modeVersion: '1.0.0',
+      configurationVersion: 'config.default',
+      policyVersion: 'policy.fraud.majority-veto',
+      policyHints: { type: 'majority', threshold: 0.5, vetoEnabled: false },
+      ttlMs: 5000
+    },
+    session: { context: {}, participants: ['risk-coordinator', 'fraud-agent', 'compliance-agent'] },
+    agent: { manifest: {}, framework: 'custom' },
+    cancelCallback: { host: '127.0.0.1', port: 0, path: '/agent/cancel' },
+    ...overrides
+  };
+}
+
 function defaultContext(overrides?: Partial<AgentRuntimeContext>): AgentRuntimeContext {
   return {
     runId: 'run-1',
+    sessionId: 'sess-uuid-v4',
     scenarioRef: 'fraud/high-value-new-device@1.0.0',
     modeName: 'macp.mode.decision.v1',
     modeVersion: '1.0.0',
@@ -69,30 +150,11 @@ function evaluationEvent(
   };
 }
 
-function objectionEvent(seq: number, proposalId: string, sender: string, severity: string): CanonicalEvent {
-  return {
-    seq,
-    type: 'proposal.updated',
-    data: {
-      sender,
-      messageType: 'Objection',
-      decodedPayload: { proposalId, severity, reason: `${sender} objection` }
-    }
-  };
-}
-
 function policyEvaluatedEvent(seq: number): CanonicalEvent {
   return { seq, type: 'policy.commitment.evaluated', data: { decision: 'allow', reasons: [] } };
 }
 
-function decisionFinalizedEvent(seq: number): CanonicalEvent {
-  return { seq, type: 'decision.finalized' };
-}
-
-// ── run the worker ──────────────────────────────────────────────────
 async function runWorker(): Promise<void> {
-  // The worker calls main() at module scope via `void main().catch(...)`.
-  // We re-require it per test; jest.isolateModules ensures a fresh import.
   return new Promise<void>((resolve, reject) => {
     jest.isolateModules(() => {
       try {
@@ -102,25 +164,204 @@ async function runWorker(): Promise<void> {
         reject(e);
       }
     });
-    // Give the async main() time to run through its event loop
     setTimeout(resolve, 200);
   });
 }
 
 // ── tests ───────────────────────────────────────────────────────────
-describe('risk-decider.worker', () => {
+describe('risk-decider.worker (direct-agent-auth)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers({ advanceTimers: true });
-    mockSendMessage.mockResolvedValue({});
+    mockVote.mockResolvedValue({});
+    mockCommit.mockResolvedValue({});
+    mockStart.mockResolvedValue({});
+    mockPropose.mockResolvedValue({});
   });
 
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  describe('proposal lifecycle', () => {
-    it('exits when run reaches terminal status', async () => {
+  describe('startup', () => {
+    it('throws when bootstrap lacks runtime.address or bearerToken', async () => {
+      const bootstrap = defaultBootstrap({
+        runtime: {
+          ...defaultBootstrap().runtime,
+          address: undefined,
+          bearerToken: undefined,
+          joinMetadata: { transport: 'http', messageFormat: 'macp' }
+        }
+      });
+      mockLoadBootstrap.mockReturnValue(bootstrap);
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockLogAgent).toHaveBeenCalledWith(
+        'risk coordinator failed',
+        expect.objectContaining({
+          error: expect.stringContaining('bootstrap.runtime.address + bootstrap.runtime.bearerToken are required')
+        })
+      );
+    });
+
+    it('instantiates MacpClient with expectedSender bound to participantId', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockMacpClientCtor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          address: 'runtime.local:50051',
+          secure: true,
+          allowInsecure: false
+        })
+      );
+      expect(mockAuthBearer).toHaveBeenCalledWith('tok-risk', { expectedSender: 'risk-coordinator' });
+      expect(mockInitialize).toHaveBeenCalled();
+    });
+
+    it('binds DecisionSession to the pre-allocated sessionId', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockDecisionSessionCtor).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ sessionId: 'sess-uuid-v4' })
+      );
+    });
+
+    it('starts cancel-callback server when bootstrap.cancelCallback is present', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockStartCancelServer).toHaveBeenCalledWith(
+        expect.objectContaining({ host: '127.0.0.1', path: '/agent/cancel' })
+      );
+    });
+  });
+
+  describe('initiator branch', () => {
+    it('emits SessionStart + Proposal when bootstrap.initiator is set', async () => {
+      mockLoadBootstrap.mockReturnValue(
+        defaultBootstrap({
+          initiator: {
+            sessionStart: {
+              intent: 'fraud/high-value-new-device',
+              participants: ['risk-coordinator', 'fraud-agent', 'compliance-agent'],
+              ttlMs: 300000,
+              modeVersion: '1.0.0',
+              configurationVersion: 'config.default'
+            },
+            kickoff: {
+              messageType: 'Proposal',
+              payload: { proposalId: 'prop-abc', option: 'review' }
+            }
+          }
+        })
+      );
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockStart).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: 'fraud/high-value-new-device', ttlMs: 300000 })
+      );
+      expect(mockPropose).toHaveBeenCalledWith(
+        expect.objectContaining({ proposalId: 'prop-abc', option: 'review' })
+      );
+    });
+
+    it('does not emit SessionStart for non-initiator bootstrap', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'completed' });
+      mockGetEvents.mockResolvedValue([]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(500);
+
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(mockPropose).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('quorum decision via DecisionSession', () => {
+    it('calls session.vote + session.commit once quorum is met', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'active' });
+      mockGetEvents
+        .mockResolvedValueOnce([
+          proposalCreatedEvent(1, 'prop-1'),
+          evaluationEvent(2, 'prop-1', 'fraud-agent', 'APPROVE'),
+          evaluationEvent(3, 'prop-1', 'compliance-agent', 'APPROVE')
+        ])
+        .mockResolvedValue([policyEvaluatedEvent(20)]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(10000);
+
+      expect(mockVote).toHaveBeenCalledWith(
+        expect.objectContaining({ proposalId: 'prop-1', vote: 'APPROVE' })
+      );
+      expect(mockCommit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'approve',
+          commitmentId: 'prop-1-final',
+          outcomePositive: true
+        })
+      );
+    });
+
+    it('records REJECT vote and outcomePositive=false when majority blocks', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
+      mockLoadContext.mockReturnValue(defaultContext());
+      mockGetRun.mockResolvedValue({ status: 'active' });
+      mockGetEvents
+        .mockResolvedValueOnce([
+          proposalCreatedEvent(1, 'prop-x'),
+          evaluationEvent(2, 'prop-x', 'fraud-agent', 'BLOCK'),
+          evaluationEvent(3, 'prop-x', 'compliance-agent', 'BLOCK')
+        ])
+        .mockResolvedValue([policyEvaluatedEvent(20)]);
+
+      await runWorker();
+      await jest.advanceTimersByTimeAsync(10000);
+
+      expect(mockVote).toHaveBeenCalledWith(
+        expect.objectContaining({ proposalId: 'prop-x', vote: 'REJECT' })
+      );
+      expect(mockCommit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'decline', outcomePositive: false })
+      );
+    });
+  });
+
+  describe('terminal + error handling', () => {
+    it('exits cleanly when run reaches terminal status', async () => {
+      mockLoadBootstrap.mockReturnValue(defaultBootstrap());
       mockLoadContext.mockReturnValue(defaultContext());
       mockGetRun.mockResolvedValue({ status: 'completed' });
       mockGetEvents.mockResolvedValue([]);
@@ -128,329 +369,30 @@ describe('risk-decider.worker', () => {
       await runWorker();
       await jest.advanceTimersByTimeAsync(1000);
 
-      expect(mockGetRun).toHaveBeenCalled();
-      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockVote).not.toHaveBeenCalled();
+      expect(mockCommit).not.toHaveBeenCalled();
       expect(mockLogAgent).toHaveBeenCalledWith(
         'run reached terminal status; exiting coordinator',
         expect.objectContaining({ status: 'completed' })
       );
     });
 
-    it('exits on decision.finalized event', async () => {
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents.mockResolvedValue([decisionFinalizedEvent(1)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(1000);
-
-      expect(mockSendMessage).not.toHaveBeenCalled();
-      expect(mockLogAgent).toHaveBeenCalledWith(
-        'decision already finalized; exiting coordinator',
-        expect.objectContaining({ seq: 1 })
-      );
-    });
-
-    it('captures proposalId from proposal.created event', async () => {
-      const proposalId = 'prop-abc';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([proposalCreatedEvent(1, proposalId)])
-        .mockResolvedValueOnce([
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        // post-commitment: return policy evaluation
-        .mockResolvedValue([policyEvaluatedEvent(10)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockLogAgent).toHaveBeenCalledWith('proposal observed', expect.objectContaining({ proposalId }));
-    });
-  });
-
-  describe('signal collection', () => {
-    it('ignores signals from own participantId', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'risk-coordinator', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(4, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      // Should send messages because quorum is met from 2 specialist signals (not 3 — own signal ignored)
-      expect(mockSendMessage).toHaveBeenCalled();
-      const voteCall = mockSendMessage.mock.calls[0][1];
-      expect(voteCall.from).toBe('risk-coordinator');
-    });
-
-    it('ignores events for non-matching proposalId', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, 'other-proposal', 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(4, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      // The event for 'other-proposal' should be ignored, quorum still met with 2 matching signals
-      expect(mockSendMessage).toHaveBeenCalled();
-    });
-  });
-
-  describe('quorum and decision', () => {
-    it('sends Vote then Commitment when quorum is met', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(2);
-
-      // First call: Vote message
-      const [voteRunId, voteBody] = mockSendMessage.mock.calls[0];
-      expect(voteRunId).toBe('run-1');
-      expect(voteBody.messageType).toBe('Vote');
-      expect(voteBody.from).toBe('risk-coordinator');
-      expect(voteBody.payloadEnvelope.proto.value.proposal_id).toBe(proposalId);
-      expect(voteBody.payloadEnvelope.proto.value.vote).toBe('approve');
-
-      // Second call: Commitment message
-      const [commitRunId, commitBody] = mockSendMessage.mock.calls[1];
-      expect(commitRunId).toBe('run-1');
-      expect(commitBody.messageType).toBe('Commitment');
-      expect(commitBody.payloadEnvelope.proto.value.action).toBe('approve');
-      expect(commitBody.payloadEnvelope.proto.value.outcome_positive).toBe(true);
-    });
-
-    it('sends decline commitment with outcome_positive=false on rejection', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'BLOCK'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'BLOCK')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(2);
-      const commitBody = mockSendMessage.mock.calls[1][1];
-      expect(commitBody.payloadEnvelope.proto.value.action).toBe('decline');
-      expect(commitBody.payloadEnvelope.proto.value.outcome_positive).toBe(false);
-    });
-
-    it('includes policy metadata in commitment payload', async () => {
-      const proposalId = 'prop-1';
-      const ctx = defaultContext({
-        policyVersion: 'policy.fraud.unanimous',
-        policyHints: {
-          type: 'majority',
-          threshold: 0.5,
-          designatedRoles: ['risk', 'compliance'],
-          vetoThreshold: 2,
-          minimumConfidence: 0.7
-        }
-      });
-      mockLoadContext.mockReturnValue(ctx);
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      const commitPayload = mockSendMessage.mock.calls[1][1].payloadEnvelope.proto.value;
-      expect(commitPayload.policy_version).toBe('policy.fraud.unanimous');
-      expect(commitPayload.designated_roles).toEqual(['risk', 'compliance']);
-      expect(commitPayload.veto_threshold).toBe(2);
-      expect(commitPayload.minimum_confidence).toBe(0.7);
-    });
-
-    it('sends to all recipients except self', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      const voteBody = mockSendMessage.mock.calls[0][1];
-      expect(voteBody.to).toEqual(['fraud-agent', 'compliance-agent']);
-    });
-  });
-
-  describe('policy evaluation wait', () => {
-    it('waits for policy.commitment.evaluated event after commitment', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        // First poll after commitment: no policy event yet
-        .mockResolvedValueOnce([])
-        // Second poll: policy evaluation arrives
-        .mockResolvedValueOnce([policyEvaluatedEvent(10)])
-        .mockResolvedValue([]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockLogAgent).toHaveBeenCalledWith(
-        'policy evaluation received',
-        expect.objectContaining({ type: 'policy.commitment.evaluated' })
-      );
-    });
-
-    it('accepts policy.denied event', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValueOnce([{ seq: 10, type: 'policy.denied', data: { decision: 'deny', reasons: ['blocked'] } }])
-        .mockResolvedValue([]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockLogAgent).toHaveBeenCalledWith(
-        'policy evaluation received',
-        expect.objectContaining({ type: 'policy.denied' })
-      );
-    });
-
-    it('accepts decision.finalized event during policy wait', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          evaluationEvent(2, proposalId, 'fraud-agent', 'APPROVE'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValueOnce([decisionFinalizedEvent(10)])
-        .mockResolvedValue([]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      expect(mockLogAgent).toHaveBeenCalledWith('decision finalized', expect.objectContaining({ seq: 10 }));
-    });
-  });
-
-  describe('objection handling', () => {
-    it('collects Objection signals and includes them in decision', async () => {
-      const proposalId = 'prop-1';
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'active' });
-      mockGetEvents
-        .mockResolvedValueOnce([
-          proposalCreatedEvent(1, proposalId),
-          objectionEvent(2, proposalId, 'fraud-agent', 'high'),
-          evaluationEvent(3, proposalId, 'compliance-agent', 'APPROVE')
-        ])
-        .mockResolvedValue([policyEvaluatedEvent(20)]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(10000);
-
-      // With majority policy (vetoEnabled=false), 1 objection + 1 approve
-      // approval rate = 1/2 = 50% >= 50% threshold -> approve
-      expect(mockSendMessage).toHaveBeenCalledTimes(2);
-      const commitPayload = mockSendMessage.mock.calls[1][1].payloadEnvelope.proto.value;
-      expect(commitPayload.action).toBe('approve');
-    });
-  });
-
-  describe('error handling', () => {
-    it('sets process.exitCode = 1 on error', async () => {
-      mockLoadContext.mockImplementation(() => {
-        throw new Error('env var missing');
+    it('sets process.exitCode = 1 on unhandled error', async () => {
+      mockLoadBootstrap.mockImplementation(() => {
+        throw new Error('bootstrap missing');
       });
 
       const originalExitCode = process.exitCode;
       await runWorker();
-      await jest.advanceTimersByTimeAsync(1000);
+      await jest.advanceTimersByTimeAsync(500);
 
       expect(process.exitCode).toBe(1);
       expect(mockLogAgent).toHaveBeenCalledWith(
         'risk coordinator failed',
-        expect.objectContaining({ error: 'env var missing' })
+        expect.objectContaining({ error: 'bootstrap missing' })
       );
 
       process.exitCode = originalExitCode;
-    });
-  });
-
-  describe('logging', () => {
-    it('logs startup with policy info', async () => {
-      mockLoadContext.mockReturnValue(defaultContext());
-      mockGetRun.mockResolvedValue({ status: 'completed' });
-      mockGetEvents.mockResolvedValue([]);
-
-      await runWorker();
-      await jest.advanceTimersByTimeAsync(1000);
-
-      expect(mockLogAgent).toHaveBeenCalledWith(
-        'risk coordinator started',
-        expect.objectContaining({
-          participantId: 'risk-coordinator',
-          policyType: 'majority',
-          policyVersion: 'policy.fraud.majority-veto'
-        })
-      );
     });
   });
 });

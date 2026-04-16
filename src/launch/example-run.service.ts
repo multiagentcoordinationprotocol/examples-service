@@ -41,12 +41,32 @@ export class ExampleRunService {
       await this.registerPolicyIfNeeded(compiled.executionRequest.session.policyVersion);
     }
 
-    await this.controlPlaneClient.validate(compiled.executionRequest);
-    const launched = await this.controlPlaneClient.createRun(compiled.executionRequest);
+    // Post the scenario-agnostic RunDescriptor (plan CP-1). The control-plane
+    // echoes back sessionId — may equal `compiled.sessionId` (we asked CP to
+    // reuse it) or a CP-allocated replacement if ours was rejected.
+    await this.controlPlaneClient.validate(compiled.runDescriptor);
+    const launched = await this.controlPlaneClient.createRun(compiled.runDescriptor);
+
+    // Per direct-agent-auth plan §"End-to-end target flow": the examples-service
+    // distributes this sessionId to every spawned agent via bootstrap. The
+    // initiator agent emits SessionStart with that sessionId; non-initiators
+    // attach via open_stream(). The control-plane reads the same session via
+    // GetSession(sessionId) + read-only StreamSession.
+    const sessionId = launched.sessionId;
+    if (!sessionId) {
+      throw new Error('control-plane did not return sessionId; cannot bootstrap agents');
+    }
+    // Reflect back into compiled state so callers/mocks that still read
+    // `executionRequest.session.metadata.sessionId` see the authoritative id.
+    compiled.sessionId = sessionId;
+    if (compiled.runDescriptor.session.sessionId !== sessionId) {
+      compiled.runDescriptor.session.sessionId = sessionId;
+    }
 
     const hostedAgents = shouldBootstrap
       ? await this.hosting.attach(compiled, {
           runId: launched.runId,
+          sessionId,
           traceId: launched.traceId,
           scenarioRef: compiled.display.scenarioRef,
           modeName: compiled.executionRequest.session.modeName,
@@ -57,7 +77,8 @@ export class ExampleRunService {
           ttlMs: compiled.executionRequest.session.ttlMs,
           sessionContext: compiled.executionRequest.session.context,
           participants: compiled.executionRequest.session.participants.map((participant) => participant.id),
-          initiatorParticipantId: compiled.executionRequest.session.initiatorParticipantId
+          initiatorParticipantId: compiled.executionRequest.session.initiatorParticipantId,
+          initiator: compiled.initiator
         })
       : [];
 

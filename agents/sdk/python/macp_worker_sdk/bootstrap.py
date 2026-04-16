@@ -34,6 +34,17 @@ class RuntimeContext:
     timeout_ms: int = 10000
     runtime_url: Optional[str] = None
     secure: bool = False
+    # Direct-agent-auth: gRPC address + bearer token for the MACP runtime.
+    # When both are populated the worker opens its own MacpClient; otherwise
+    # it can only poll the control-plane for observability.
+    address: Optional[str] = None
+    bearer_token: Optional[str] = None
+    tls: bool = True
+    allow_insecure: bool = False
+
+    @property
+    def has_direct_identity(self) -> bool:
+        return bool(self.address) and bool(self.bearer_token)
 
 
 @dataclass
@@ -84,6 +95,32 @@ class KickoffContext:
 
 
 @dataclass
+class InitiatorSessionStart:
+    intent: str = ''
+    participants: List[str] = field(default_factory=list)
+    ttl_ms: int = 300000
+    mode_version: str = ''
+    configuration_version: str = ''
+    policy_version: Optional[str] = None
+    context: JsonDict = field(default_factory=dict)
+
+
+@dataclass
+class InitiatorContext:
+    """Initiator-only bootstrap payload. Present ONLY on the bootstrap of the
+    one agent whose participantId equals the run's initiator."""
+    session_start: InitiatorSessionStart = field(default_factory=InitiatorSessionStart)
+    kickoff: Optional[KickoffContext] = None
+
+
+@dataclass
+class CancelCallbackContext:
+    host: str = '127.0.0.1'
+    port: int = 0
+    path: str = '/agent/cancel'
+
+
+@dataclass
 class BootstrapContext:
     """Full bootstrap context loaded from the bootstrap file."""
     run: RunContext
@@ -93,7 +130,13 @@ class BootstrapContext:
     session: SessionContext
     agent: AgentContext
     kickoff: Optional[KickoffContext] = None
+    initiator: Optional[InitiatorContext] = None
+    cancel_callback: Optional[CancelCallbackContext] = None
     raw: JsonDict = field(default_factory=dict)
+
+    @property
+    def is_initiator(self) -> bool:
+        return self.initiator is not None
 
     @property
     def run_id(self) -> str:
@@ -165,6 +208,10 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
         timeout_ms=runtime_data.get('timeoutMs', 10000),
         runtime_url=runtime_data.get('runtimeUrl'),
         secure=bool(runtime_data.get('secure', False)),
+        address=runtime_data.get('address'),
+        bearer_token=runtime_data.get('bearerToken'),
+        tls=bool(runtime_data.get('tls', True)),
+        allow_insecure=bool(runtime_data.get('allowInsecure', False)),
     )
 
     execution_data = raw.get('execution', {})
@@ -217,6 +264,38 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
             payload=kickoff_data.get('payload', {}),
         )
 
+    initiator = None
+    initiator_data = raw.get('initiator')
+    if isinstance(initiator_data, dict):
+        ss = initiator_data.get('sessionStart', {})
+        ss_context = ss.get('context')
+        session_start = InitiatorSessionStart(
+            intent=ss.get('intent', ''),
+            participants=ss.get('participants', []),
+            ttl_ms=int(ss.get('ttlMs', 300000)),
+            mode_version=ss.get('modeVersion', ''),
+            configuration_version=ss.get('configurationVersion', ''),
+            policy_version=ss.get('policyVersion'),
+            context=ss_context if isinstance(ss_context, dict) else {},
+        )
+        initiator_kickoff = None
+        ik = initiator_data.get('kickoff')
+        if isinstance(ik, dict):
+            initiator_kickoff = KickoffContext(
+                message_type=ik.get('messageType'),
+                payload=ik.get('payload', {}),
+            )
+        initiator = InitiatorContext(session_start=session_start, kickoff=initiator_kickoff)
+
+    cancel_callback = None
+    cc_data = raw.get('cancelCallback')
+    if isinstance(cc_data, dict) and cc_data.get('host'):
+        cancel_callback = CancelCallbackContext(
+            host=str(cc_data.get('host', '127.0.0.1')),
+            port=int(cc_data.get('port', 0) or 0),
+            path=str(cc_data.get('path', '/agent/cancel')),
+        )
+
     return BootstrapContext(
         run=run,
         participant=participant,
@@ -225,6 +304,8 @@ def load_bootstrap(filepath: Optional[str] = None) -> BootstrapContext:
         session=session,
         agent=agent,
         kickoff=kickoff,
+        initiator=initiator,
+        cancel_callback=cancel_callback,
         raw=raw,
     )
 

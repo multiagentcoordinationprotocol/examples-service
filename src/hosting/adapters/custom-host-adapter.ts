@@ -6,6 +6,7 @@ import {
   PreparedLaunch
 } from '../contracts/host-adapter.types';
 import { AgentFramework, AgentManifest, ManifestValidationResult } from '../contracts/manifest.types';
+import { buildAgentEnv } from './agent-env';
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 15000;
 
@@ -42,36 +43,11 @@ export class CustomHostAdapter implements AgentHostAdapter {
         ? ['-m', entrypoint, ...(manifest.host?.args ?? [])]
         : [entrypoint, ...(manifest.host?.args ?? [])];
 
+    const shared = buildAgentEnv(bootstrap, 'custom');
     const env: Record<string, string> = {
       ...process.env as Record<string, string>,
       ...(manifest.host?.env ?? {}),
-      MACP_BOOTSTRAP_FILE: '',
-      MACP_CONTROL_PLANE_URL: bootstrap.runtime.baseUrl,
-      MACP_LOG_LEVEL: 'info',
-      MACP_FRAMEWORK: 'custom',
-      MACP_PARTICIPANT_ID: bootstrap.participant.participantId,
-      MACP_RUN_ID: bootstrap.run.runId,
-      // Legacy env vars required by Node.js example agent workers
-      CONTROL_PLANE_BASE_URL: bootstrap.runtime.baseUrl,
-      CONTROL_PLANE_API_KEY: bootstrap.runtime.apiKey ?? '',
-      CONTROL_PLANE_TIMEOUT_MS: String(bootstrap.runtime.timeoutMs ?? 10000),
-      EXAMPLE_AGENT_RUN_ID: bootstrap.run.runId,
-      EXAMPLE_AGENT_TRACE_ID: bootstrap.run.traceId ?? '',
-      EXAMPLE_AGENT_SCENARIO_REF: bootstrap.execution.scenarioRef,
-      EXAMPLE_AGENT_MODE_NAME: bootstrap.execution.modeName,
-      EXAMPLE_AGENT_MODE_VERSION: bootstrap.execution.modeVersion ?? '1.0.0',
-      EXAMPLE_AGENT_CONFIGURATION_VERSION: bootstrap.execution.configurationVersion ?? 'config.default',
-      EXAMPLE_AGENT_POLICY_VERSION: bootstrap.execution.policyVersion ?? '',
-      EXAMPLE_AGENT_POLICY_HINTS_JSON: JSON.stringify(bootstrap.execution.policyHints ?? {}),
-      EXAMPLE_AGENT_SESSION_TTL_MS: String(bootstrap.execution.ttlMs ?? 300000),
-      EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID: bootstrap.execution.initiatorParticipantId ?? '',
-      EXAMPLE_AGENT_CONTEXT_JSON: JSON.stringify(bootstrap.session.context ?? {}),
-      EXAMPLE_AGENT_PARTICIPANTS_JSON: JSON.stringify(bootstrap.session.participants ?? []),
-      EXAMPLE_AGENT_REF: bootstrap.participant.agentId ?? manifest.id,
-      EXAMPLE_AGENT_PARTICIPANT_ID: bootstrap.participant.participantId,
-      EXAMPLE_AGENT_ROLE: bootstrap.participant.role ?? '',
-      EXAMPLE_AGENT_FRAMEWORK: 'custom',
-      EXAMPLE_AGENT_TRANSPORT_IDENTITY: `agent://${bootstrap.participant.agentId ?? manifest.id}`,
+      ...shared,
       EXAMPLE_AGENT_ENTRYPOINT: manifest.entrypoint.value
     };
 

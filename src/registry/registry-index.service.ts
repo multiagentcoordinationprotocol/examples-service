@@ -21,7 +21,7 @@ export class RegistryIndexService {
 
   constructor(
     private readonly loader: FileRegistryLoader,
-    private readonly config: AppConfigService
+    config: AppConfigService
   ) {
     this.cacheTtlMs = config.registryCacheTtlMs;
   }

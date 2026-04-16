@@ -28,6 +28,10 @@ export async function createIntegrationTestApp(
     autoBootstrapExampleAgents: boolean;
     authApiKeys: string[];
     mockControlPlaneOptions: { requiredBearerToken?: string };
+    agentRuntimeTokens: Record<string, string>;
+    runtimeAddress: string;
+    runtimeTls: boolean;
+    runtimeAllowInsecure: boolean;
   }>
 ): Promise<IntegrationTestContext> {
   const controlPlaneMode = (process.env.INTEGRATION_CONTROL_PLANE ?? 'mock') as ControlPlaneMode;
@@ -49,6 +53,7 @@ export async function createIntegrationTestApp(
     mockControlPlane = null;
   }
 
+  const agentRuntimeTokens = overrides?.agentRuntimeTokens ?? {};
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule]
   })
@@ -68,7 +73,16 @@ export async function createIntegrationTestApp(
       registerPoliciesOnLaunch: true,
       exampleAgentPythonPath: 'python3',
       exampleAgentNodePath: process.execPath,
-      authApiKeys: overrides?.authApiKeys ?? []
+      authApiKeys: overrides?.authApiKeys ?? [],
+      agentRuntimeTokens,
+      runtimeAddress: overrides?.runtimeAddress ?? '',
+      runtimeTls: overrides?.runtimeTls ?? true,
+      runtimeAllowInsecure: overrides?.runtimeAllowInsecure ?? false,
+      cancelCallbackHost: '127.0.0.1',
+      cancelCallbackPortBase: 0,
+      cancelCallbackPath: '/agent/cancel',
+      resolveAgentToken: (senderOrAgentRef: string | undefined): string | undefined =>
+        senderOrAgentRef ? agentRuntimeTokens[senderOrAgentRef] : undefined
     })
     .compile();
 
