@@ -64,8 +64,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run build
-      - run: npm test -- --coverage
-      - run: npm run test:e2e
+      - run: npm test -- --coverage --forceExit
+      - run: npm run test:e2e -- --forceExit
 
       - name: Validate Python workers
         run: |
