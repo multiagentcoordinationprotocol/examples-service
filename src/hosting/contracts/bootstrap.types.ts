@@ -6,7 +6,8 @@
  * first mode-specific envelope.
  *
  * See `ui-console/plans/direct-agent-auth.md` § "Agent bootstrap" for the
- * canonical schema.
+ * narrative schema, and the canonical JSON Schema at:
+ *   multiagentcoordinationprotocol/schemas/json/macp-agent-bootstrap.schema.json
  */
 export interface BootstrapPayload {
   run: {
