@@ -1,7 +1,10 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* .npmrc ./
-RUN npm ci --ignore-scripts
+ARG NPM_TOKEN
+RUN echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+    npm ci --ignore-scripts && \
+    rm -f .npmrc
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src/ src/
 RUN npm run build
@@ -20,7 +23,11 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/agent-requiremen
   && rm /tmp/agent-requirements.txt
 
 COPY package.json package-lock.json* .npmrc ./
-RUN npm ci --ignore-scripts --omit=dev && npm cache clean --force
+ARG NPM_TOKEN
+RUN echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+    npm ci --ignore-scripts --omit=dev && \
+    npm cache clean --force && \
+    rm -f .npmrc
 
 COPY --from=builder /app/dist dist/
 COPY packs/ packs/
