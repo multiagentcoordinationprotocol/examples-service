@@ -5,6 +5,5 @@ langchain-core==0.3.84
 crewai==0.203.2
 openai==1.109.1
 # Direct-agent-auth: agents open their own gRPC channel to the MACP runtime
-# via macp_sdk (RFC-MACP-0004 §4). path-installed from the sibling monorepo
-# directory; swap to `macp-sdk-python>=0.2.0` once the package lands on PyPI.
--e ../../python-sdk
+# via macp_sdk (RFC-MACP-0004 §4).
+macp-sdk-python>=0.2.1
