@@ -1,8 +1,9 @@
+# syntax=docker/dockerfile:1
 FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* .npmrc ./
-ARG NPM_TOKEN
-RUN echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+ARG NODE_AUTH_TOKEN
+RUN echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc && \
     npm ci --ignore-scripts && \
     rm -f .npmrc
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
@@ -17,14 +18,14 @@ RUN apt-get update \
   && groupadd -r appgroup \
   && useradd -r -g appgroup appuser
 
-# Install Python agent framework dependencies (LangGraph, LangChain, CrewAI)
+# Install Python agent framework dependencies (LangGraph, LangChain, CrewAI, macp-sdk-python)
 COPY agents/requirements.txt /tmp/agent-requirements.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/agent-requirements.txt \
   && rm /tmp/agent-requirements.txt
 
 COPY package.json package-lock.json* .npmrc ./
-ARG NPM_TOKEN
-RUN echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+ARG NODE_AUTH_TOKEN
+RUN echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc && \
     npm ci --ignore-scripts --omit=dev && \
     npm cache clean --force && \
     rm -f .npmrc
