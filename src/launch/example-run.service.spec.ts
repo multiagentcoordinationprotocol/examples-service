@@ -1,19 +1,15 @@
 import { AppConfigService } from '../config/app-config.service';
 import { CompileLaunchResult } from '../contracts/launch';
-import { ControlPlaneClient } from '../control-plane/control-plane.client';
 import { CompilerService } from '../compiler/compiler.service';
 import { HostedExampleAgent } from '../contracts/example-agents';
 import { HostingService } from '../hosting/hosting.service';
-import { PolicyLoaderService } from '../policy/policy-loader.service';
 import { ExampleRunService } from './example-run.service';
 
 describe('ExampleRunService', () => {
   let service: ExampleRunService;
   let compiler: jest.Mocked<CompilerService>;
   let hosting: jest.Mocked<HostingService>;
-  let controlPlane: jest.Mocked<ControlPlaneClient>;
   let config: AppConfigService;
-  let policyLoader: jest.Mocked<PolicyLoaderService>;
 
   const sessionId = '00000000-0000-4000-8000-000000000001';
   const compiled: CompileLaunchResult = {
@@ -88,7 +84,7 @@ describe('ExampleRunService', () => {
     {
       ...resolvedAgents[0],
       status: 'bootstrapped',
-      participantMetadata: { attachedRunId: 'run-1' }
+      participantMetadata: { attachedRunId: sessionId }
     }
   ];
 
@@ -98,162 +94,65 @@ describe('ExampleRunService', () => {
       resolve: jest.fn().mockResolvedValue(resolvedAgents),
       attach: jest.fn().mockResolvedValue(attachedAgents)
     } as unknown as jest.Mocked<HostingService>;
-    controlPlane = {
-      validate: jest.fn().mockResolvedValue(undefined),
-      createRun: jest
-        .fn()
-        .mockResolvedValue({ runId: 'run-1', sessionId, status: 'queued', traceId: 'trace-1' }),
-      registerPolicy: jest.fn().mockResolvedValue({ ok: true }),
-      baseUrl: 'http://localhost:3001'
-    } as unknown as jest.Mocked<ControlPlaneClient>;
     config = {
-      autoBootstrapExampleAgents: true,
-      registerPoliciesOnLaunch: true
+      autoBootstrapExampleAgents: true
     } as AppConfigService;
-    policyLoader = {
-      loadPolicy: jest.fn().mockReturnValue(undefined),
-      listAvailablePolicies: jest.fn().mockReturnValue([]),
-      listRegistrablePolicies: jest.fn().mockReturnValue([])
-    } as unknown as jest.Mocked<PolicyLoaderService>;
 
-    service = new ExampleRunService(compiler, hosting, controlPlane, config, policyLoader);
+    service = new ExampleRunService(compiler, hosting, config);
   });
 
-  it('supports dry-run example launches', async () => {
-    const result = await service.run({
-      scenarioRef: 'fraud/high-value-new-device@1.0.0',
-      submitToControlPlane: false,
-      inputs: {}
-    });
-
-    expect(hosting.resolve).toHaveBeenCalledWith(compiled);
-    expect(hosting.attach).not.toHaveBeenCalled();
-    expect(controlPlane.validate).not.toHaveBeenCalled();
-    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
-    expect(result.hostedAgents).toEqual(resolvedAgents);
-    expect(result.controlPlane?.submitted).toBe(false);
-  });
-
-  it('validates, submits, and attaches workers to the launched run by default', async () => {
+  it('compiles and attaches agents with sessionId', async () => {
     const result = await service.run({
       scenarioRef: 'fraud/high-value-new-device@1.0.0',
       inputs: {}
     });
 
     expect(hosting.resolve).toHaveBeenCalledWith(compiled);
-    expect(controlPlane.validate).toHaveBeenCalledWith(compiled.runDescriptor);
-    expect(controlPlane.createRun).toHaveBeenCalledWith(compiled.runDescriptor);
-    expect(hosting.attach).toHaveBeenCalledWith(compiled, {
-      runId: 'run-1',
-      sessionId,
-      traceId: 'trace-1',
-      scenarioRef: 'fraud/high-value-new-device@1.0.0',
-      modeName: 'macp.mode.decision.v1',
-      modeVersion: '1.0.0',
-      configurationVersion: 'config.default',
-      policyVersion: 'policy.default',
-      policyHints: {
-        type: 'none',
-        description: 'No governance constraints',
-        vetoThreshold: 1,
-        minimumConfidence: 0.0,
-        designatedRoles: []
-      },
-      ttlMs: 300000,
-      sessionContext: undefined,
-      participants: ['risk-agent'],
-      initiatorParticipantId: 'risk-agent',
-      initiator: compiled.initiator
-    });
+    expect(hosting.attach).toHaveBeenCalledWith(
+      compiled,
+      expect.objectContaining({
+        runId: sessionId,
+        sessionId,
+        scenarioRef: 'fraud/high-value-new-device@1.0.0',
+        modeName: 'macp.mode.decision.v1',
+        modeVersion: '1.0.0',
+        participants: ['risk-agent'],
+        initiator: compiled.initiator
+      })
+    );
     expect(result.hostedAgents).toEqual(attachedAgents);
-    expect(result.controlPlane?.runId).toBe('run-1');
+    expect(result.sessionId).toBe(sessionId);
   });
 
-  it('skips policy registration for policy.default', async () => {
-    await service.run({
-      scenarioRef: 'fraud/high-value-new-device@1.0.0',
-      inputs: {}
-    });
-    // policy.default is auto-resolved by runtime, no registration needed
-    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
-  });
-
-  it('registers policy before createRun when policyVersion is not default', async () => {
-    const compiledWithPolicy = {
-      ...compiled,
-      executionRequest: {
-        ...compiled.executionRequest,
-        session: {
-          ...compiled.executionRequest.session,
-          policyVersion: 'policy.fraud.unanimous'
-        }
-      }
-    };
-    compiler.compile.mockResolvedValue(compiledWithPolicy);
-
-    const policyDef = {
-      policy_id: 'policy.fraud.unanimous',
-      mode: 'macp.mode.decision.v1',
-      schema_version: 1,
-      description: 'Unanimous',
-      rules: {
-        voting: { algorithm: 'unanimous' as const },
-        objection_handling: { critical_severity_vetoes: true, veto_threshold: 1 },
-        evaluation: { minimum_confidence: 0.7, required_before_voting: true },
-        commitment: { authority: 'initiator_only' as const, require_vote_quorum: true, designated_roles: [] }
-      }
-    };
-    policyLoader.loadPolicy.mockReturnValue(policyDef);
-
+  it('does not call any control-plane endpoints', async () => {
     await service.run({
       scenarioRef: 'fraud/high-value-new-device@1.0.0',
       inputs: {}
     });
 
-    expect(policyLoader.loadPolicy).toHaveBeenCalledWith('policy.fraud.unanimous');
-    expect(controlPlane.registerPolicy).toHaveBeenCalledWith(policyDef);
-    expect(controlPlane.validate).toHaveBeenCalled();
-    expect(controlPlane.createRun).toHaveBeenCalled();
+    // No CP dependency at all — just compile + attach
+    expect(compiler.compile).toHaveBeenCalled();
+    expect(hosting.attach).toHaveBeenCalled();
   });
 
-  it('proceeds even when policy registration fails', async () => {
-    const compiledWithPolicy = {
-      ...compiled,
-      executionRequest: {
-        ...compiled.executionRequest,
-        session: {
-          ...compiled.executionRequest.session,
-          policyVersion: 'policy.fraud.unanimous'
-        }
-      }
-    };
-    compiler.compile.mockResolvedValue(compiledWithPolicy);
-    policyLoader.loadPolicy.mockReturnValue({
-      policy_id: 'policy.fraud.unanimous',
-      mode: 'macp.mode.decision.v1',
-      schema_version: 1,
-      description: 'test',
-      rules: {
-        voting: { algorithm: 'unanimous' as const },
-        objection_handling: { critical_severity_vetoes: true, veto_threshold: 1 },
-        evaluation: { minimum_confidence: 0, required_before_voting: false },
-        commitment: { authority: 'initiator_only' as const, require_vote_quorum: false, designated_roles: [] }
-      }
-    });
-    controlPlane.registerPolicy.mockResolvedValue({ ok: false, error: 'service unavailable' });
+  it('skips attach when bootstrapAgents is false', async () => {
+    config = { autoBootstrapExampleAgents: false } as AppConfigService;
+    service = new ExampleRunService(compiler, hosting, config);
 
     const result = await service.run({
       scenarioRef: 'fraud/high-value-new-device@1.0.0',
+      bootstrapAgents: false,
       inputs: {}
     });
 
-    // Should still proceed to validate and createRun
-    expect(controlPlane.validate).toHaveBeenCalled();
-    expect(result.controlPlane?.submitted).toBe(true);
+    expect(hosting.resolve).not.toHaveBeenCalled();
+    expect(hosting.attach).not.toHaveBeenCalled();
+    expect(result.hostedAgents).toEqual([]);
+    expect(result.sessionId).toBeUndefined();
   });
 
   describe('applyRequestOverrides', () => {
-    it('merges new tags into compiled.executionRequest.execution.tags without dropping existing ones', async () => {
+    it('merges tags', async () => {
       const result = await service.run({
         scenarioRef: 'fraud/high-value-new-device@1.0.0',
         inputs: {},
@@ -264,7 +163,7 @@ describe('ExampleRunService', () => {
       expect(executionTags).toEqual(expect.arrayContaining(['extra-tag', 'owner:qa']));
     });
 
-    it('overrides requester when provided', async () => {
+    it('overrides requester', async () => {
       const result = await service.run({
         scenarioRef: 'fraud/high-value-new-device@1.0.0',
         inputs: {},
@@ -277,7 +176,7 @@ describe('ExampleRunService', () => {
       });
     });
 
-    it('stamps runLabel onto executionRequest.session.metadata.runLabel', async () => {
+    it('stamps runLabel', async () => {
       const result = await service.run({
         scenarioRef: 'fraud/high-value-new-device@1.0.0',
         inputs: {},
@@ -286,30 +185,5 @@ describe('ExampleRunService', () => {
 
       expect(result.compiled.executionRequest.session.metadata?.runLabel).toBe('nightly-2026-04-15');
     });
-
-  });
-
-  it('skips policy registration when registerPoliciesOnLaunch is false', async () => {
-    config = { autoBootstrapExampleAgents: true, registerPoliciesOnLaunch: false } as AppConfigService;
-    service = new ExampleRunService(compiler, hosting, controlPlane, config, policyLoader);
-
-    const compiledWithPolicy = {
-      ...compiled,
-      executionRequest: {
-        ...compiled.executionRequest,
-        session: {
-          ...compiled.executionRequest.session,
-          policyVersion: 'policy.fraud.unanimous'
-        }
-      }
-    };
-    compiler.compile.mockResolvedValue(compiledWithPolicy);
-
-    await service.run({
-      scenarioRef: 'fraud/high-value-new-device@1.0.0',
-      inputs: {}
-    });
-
-    expect(controlPlane.registerPolicy).not.toHaveBeenCalled();
   });
 });

@@ -35,9 +35,7 @@ const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 // Files allowed to reference the forbidden symbols (for example, this file itself).
-const INVARIANT_EXEMPT_FILES = new Set<string>([
-  path.resolve(__dirname, 'observer-invariant.spec.ts')
-]);
+const INVARIANT_EXEMPT_FILES = new Set<string>([path.resolve(__dirname, 'observer-invariant.spec.ts')]);
 
 function walk(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });

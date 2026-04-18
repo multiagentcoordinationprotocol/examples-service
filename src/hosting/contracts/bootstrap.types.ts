@@ -1,144 +1,82 @@
 /**
- * Bootstrap payload written by the examples-service for each spawned agent.
+ * Flat bootstrap payload written by the examples-service for each spawned agent.
  *
- * Carries everything the agent needs to authenticate to the runtime directly,
- * participate in the session, and (if the initiator) emit SessionStart + the
- * first mode-specific envelope.
- *
- * See `ui-console/plans/direct-agent-auth.md` § "Agent bootstrap" for the
- * narrative schema, and the canonical JSON Schema at:
- *   multiagentcoordinationprotocol/schemas/json/macp-agent-bootstrap.schema.json
+ * This format matches what both `macp_sdk` (Python) and `macp-sdk-typescript`
+ * expect in their `fromBootstrap()` functions. The examples-service is the
+ * single source of truth for this file — agents read it directly via the
+ * `MACP_BOOTSTRAP_FILE` environment variable.
  */
 export interface BootstrapPayload {
-  run: {
-    runId: string;
-    /**
-     * Pre-allocated by the examples-service (UUID v4). Every agent in a run
-     * receives the same sessionId; the initiator uses it when emitting
-     * SessionStart. Guaranteed to be present for any launch that goes through
-     * `ExampleRunService.run()`.
-     */
-    sessionId: string;
-    traceId?: string;
-  };
-  participant: {
-    participantId: string;
-    agentId: string;
-    displayName: string;
-    role: string;
-  };
-  runtime: {
-    /**
-     * gRPC address of the MACP runtime (e.g. `runtime.local:50051`). Populated
-     * when direct-agent-auth is enabled; when empty the agent falls back to
-     * the legacy HTTP bridge via `baseUrl`.
-     */
-    address?: string;
-    /**
-     * Bearer token issued to THIS agent. Used with the runtime's
-     * `MACP_AUTH_TOKENS_JSON` identity entry; see RFC-MACP-0004 §4. Omitted
-     * when the agent is expected to fall back to the legacy HTTP path.
-     */
-    bearerToken?: string;
-    /**
-     * TLS flag for the direct-to-runtime gRPC channel. Defaults to true per
-     * RFC-MACP-0006 §3; combine with `allowInsecure` only in local dev.
-     */
-    tls?: boolean;
-    allowInsecure?: boolean;
+  /** Agent's unique sender identity within the session. */
+  participant_id: string;
+  /** Pre-allocated session UUID v4. Every agent in a run receives the same value. */
+  session_id: string;
+  /** Mode URI (e.g. `macp.mode.decision.v1`). */
+  mode: string;
+  /** gRPC address of the MACP runtime (e.g. `runtime.local:50051`). */
+  runtime_url: string;
+  /** Bearer token for this agent's runtime identity. */
+  auth_token?: string;
+  /** Dev-only: agent identity header value (requires `MACP_ALLOW_DEV_SENDER_HEADER=1`). */
+  agent_id?: string;
+  /** Enable TLS for the runtime gRPC channel. Defaults to true in production. */
+  secure?: boolean;
+  /** Allow plaintext gRPC. Required when `secure` is false. */
+  allow_insecure?: boolean;
+  /** List of all participant IDs in the session. */
+  participants?: string[];
+  /** Mode semantic version. */
+  mode_version?: string;
+  /** Configuration schema version. */
+  configuration_version?: string;
+  /** Governance policy version. */
+  policy_version?: string;
 
-    // Legacy HTTP bridge (narrowed to read-only observability after ES-8).
-    baseUrl: string;
-    /** @deprecated legacy HTTP write path; kept for backward compatibility with pre-0.2 agents. */
-    messageEndpoint: string;
-    eventsEndpoint: string;
-    apiKey?: string;
-    timeoutMs: number;
-    /** @deprecated alias retained for older workers. */
-    runtimeUrl?: string;
-    /** @deprecated alias retained for older workers. */
-    secure?: boolean;
-    joinMetadata: {
-      transport: 'http' | 'grpc';
-      messageFormat: 'macp';
-    };
-  };
-  execution: {
-    scenarioRef: string;
-    modeName: string;
-    modeVersion: string;
-    configurationVersion: string;
-    policyVersion?: string;
-    policyHints?: {
-      type?: string;
-      description?: string;
-      threshold?: number;
-      vetoEnabled?: boolean;
-      criticalSeverityVetoes?: boolean;
-      vetoRoles?: string[];
-      vetoThreshold?: number;
-      minimumConfidence?: number;
-      designatedRoles?: string[];
-    };
-    ttlMs: number;
-    initiatorParticipantId?: string;
-    tags?: string[];
-    requester?: string;
-  };
-  session: {
-    context: Record<string, unknown>;
-    participants: string[];
-    metadata?: Record<string, unknown>;
-  };
   /**
-   * @deprecated Initiator kickoff lives on `initiator.kickoff` starting with
-   * direct-agent-auth. Retained at the top level for backward compatibility
-   * with legacy workers that read it directly.
-   */
-  kickoff?: {
-    messageType: string;
-    payload: Record<string, unknown>;
-  };
-  agent: {
-    manifest: Record<string, unknown>;
-    framework: string;
-    frameworkConfig?: Record<string, unknown>;
-  };
-  /**
-   * Present ONLY on the bootstrap file for the initiator agent. Contains the
-   * payload the initiator uses when emitting the first SessionStart envelope
-   * and the first mode-specific envelope (e.g. Proposal). Non-initiators have
-   * `initiator` absent and just attach to the session's read stream.
+   * Present ONLY on the initiator agent's bootstrap. Contains the payload
+   * the initiator uses to emit SessionStart + the first mode-specific
+   * envelope (e.g. Proposal). Non-initiators have `initiator` absent.
    */
   initiator?: {
-    sessionStart: {
+    session_start: {
       intent: string;
       participants: string[];
-      ttlMs: number;
-      modeVersion: string;
-      configurationVersion: string;
-      policyVersion?: string;
+      ttl_ms: number;
+      mode_version: string;
+      configuration_version: string;
+      policy_version?: string;
       context?: Record<string, unknown>;
+      context_id?: string;
+      extensions?: Record<string, unknown>;
       roots?: Array<{ uri: string; name?: string }>;
     };
     kickoff?: {
-      messageType: string;
-      /** Proto typeName that the agent should encode payload with. */
-      payloadType?: string;
+      message_type: string;
+      payload_type?: string;
       payload: Record<string, unknown>;
     };
   };
+
   /**
-   * Local HTTP callback the control-plane (or any operator) can POST to when
-   * a cancel is requested for this run. The agent listens on
-   * `http://host:port{path}` with `{ runId, reason }` body. RFC-0001 §7.2
-   * Option A. Empty/absent when the deployment opts into policy-delegated
-   * cancellation (Option B).
+   * Cancel callback endpoint (RFC-0001 §7.2 Option A).
+   * The agent listens on `http://host:port{path}` for `{ runId, reason }` POST.
    */
-  cancelCallback?: {
+  cancel_callback?: {
     host: string;
     port: number;
     path: string;
+  };
+
+  /** Metadata not consumed by the SDK but available to agent logic. */
+  metadata?: {
+    run_id?: string;
+    trace_id?: string;
+    scenario_ref?: string;
+    role?: string;
+    framework?: string;
+    agent_ref?: string;
+    policy_hints?: Record<string, unknown>;
+    session_context?: Record<string, unknown>;
   };
 }
 

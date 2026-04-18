@@ -1,35 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import * as path from 'path';
 import { AppModule } from '../../src/app.module';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { GlobalExceptionFilter } from '../../src/errors/exception.filter';
+import { buildE2eConfig } from './e2e-config';
 
 describe('Launch (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const fixturesPacksDir = path.resolve(__dirname, '../fixtures/packs');
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule]
     })
       .overrideProvider(AppConfigService)
-      .useValue({
-        packsDir: fixturesPacksDir,
-        registryCacheTtlMs: 0,
-        corsOrigin: '*',
-        isDevelopment: true,
-        port: 0,
-        host: '0.0.0.0',
-        logLevel: 'error',
-        controlPlaneBaseUrl: 'http://localhost:3001',
-        controlPlaneTimeoutMs: 1000,
-        autoBootstrapExampleAgents: true,
-        exampleAgentPythonPath: 'python3',
-        exampleAgentNodePath: process.execPath
-      })
+      .useValue(buildE2eConfig())
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -223,7 +208,7 @@ describe('Launch (e2e)', () => {
           expect(res.body.hostedAgents).toHaveLength(4);
           expect(res.body.hostedAgents[0].transportIdentity).toContain('agent://');
           expect(res.body.hostedAgents[2].framework).toBe('crewai');
-          expect(res.body.controlPlane.submitted).toBe(false);
+          expect(res.body.sessionId).toBeDefined();
         });
     });
 

@@ -2,35 +2,27 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BootstrapPayload } from '../../hosting/contracts/bootstrap.types';
-import {
-  loadBootstrapPayload,
-  hasDirectRuntimeIdentity,
-  isInitiator
-} from './bootstrap-loader';
+import { loadBootstrapPayload, hasDirectRuntimeIdentity, isInitiator } from './bootstrap-loader';
 
 function fullBootstrap(overrides: Partial<BootstrapPayload> = {}): BootstrapPayload {
   return {
-    run: { runId: 'run-1', sessionId: 'sess-uuid-v4' },
-    participant: { participantId: 'risk-agent', agentId: 'risk-agent', displayName: 'Risk', role: 'coordinator' },
-    runtime: {
-      address: 'runtime.local:50051',
-      bearerToken: 'tok-risk',
-      tls: true,
-      baseUrl: 'http://localhost:3001',
-      messageEndpoint: '/runs/run-1/messages',
-      eventsEndpoint: '/runs/run-1/events',
-      timeoutMs: 10000,
-      joinMetadata: { transport: 'grpc', messageFormat: 'macp' }
+    participant_id: 'risk-agent',
+    session_id: 'sess-uuid-v4',
+    mode: 'macp.mode.decision.v1',
+    runtime_url: 'runtime.local:50051',
+    auth_token: 'tok-risk',
+    secure: true,
+    allow_insecure: false,
+    participants: ['risk-agent'],
+    mode_version: '1.0.0',
+    configuration_version: 'config.default',
+    metadata: {
+      run_id: 'run-1',
+      scenario_ref: 'fraud/test@1.0.0',
+      role: 'coordinator',
+      framework: 'custom',
+      agent_ref: 'risk-agent'
     },
-    execution: {
-      scenarioRef: 'fraud/test@1.0.0',
-      modeName: 'macp.mode.decision.v1',
-      modeVersion: '1.0.0',
-      configurationVersion: 'config.default',
-      ttlMs: 300000
-    },
-    session: { context: {}, participants: ['risk-agent'] },
-    agent: { manifest: {}, framework: 'custom' },
     ...overrides
   };
 }
@@ -59,8 +51,8 @@ describe('bootstrap-loader', () => {
   it('loads a valid bootstrap file', () => {
     writeBootstrap(fullBootstrap());
     const loaded = loadBootstrapPayload();
-    expect(loaded.run.runId).toBe('run-1');
-    expect(loaded.runtime.address).toBe('runtime.local:50051');
+    expect(loaded.metadata?.run_id).toBe('run-1');
+    expect(loaded.runtime_url).toBe('runtime.local:50051');
   });
 
   it('throws when MACP_BOOTSTRAP_FILE is unset', () => {
@@ -75,18 +67,10 @@ describe('bootstrap-loader', () => {
     expect(() => loadBootstrapPayload()).toThrow(/not valid JSON/);
   });
 
-  it('hasDirectRuntimeIdentity returns true only when address + bearerToken are both present', () => {
+  it('hasDirectRuntimeIdentity returns true only when runtime_url + auth_token are both present', () => {
     expect(hasDirectRuntimeIdentity(fullBootstrap())).toBe(true);
-    expect(
-      hasDirectRuntimeIdentity(
-        fullBootstrap({ runtime: { ...fullBootstrap().runtime, bearerToken: undefined } })
-      )
-    ).toBe(false);
-    expect(
-      hasDirectRuntimeIdentity(
-        fullBootstrap({ runtime: { ...fullBootstrap().runtime, address: undefined } })
-      )
-    ).toBe(false);
+    expect(hasDirectRuntimeIdentity(fullBootstrap({ auth_token: undefined }))).toBe(false);
+    expect(hasDirectRuntimeIdentity(fullBootstrap({ runtime_url: undefined }))).toBe(false);
   });
 
   it('isInitiator reflects presence of bootstrap.initiator', () => {
@@ -95,12 +79,12 @@ describe('bootstrap-loader', () => {
       isInitiator(
         fullBootstrap({
           initiator: {
-            sessionStart: {
+            session_start: {
               intent: 'x',
               participants: ['risk-agent'],
-              ttlMs: 1000,
-              modeVersion: '1.0.0',
-              configurationVersion: 'config.default'
+              ttl_ms: 1000,
+              mode_version: '1.0.0',
+              configuration_version: 'config.default'
             }
           }
         })

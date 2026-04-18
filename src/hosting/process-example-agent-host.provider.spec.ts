@@ -163,7 +163,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       jest.spyOn(supervisor, 'launch').mockReturnValue({
         handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
         child: mockChild,
-        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        manifest: {
+          id: 'fraud-agent',
+          name: 'Fraud Agent',
+          framework: 'langgraph',
+          entrypoint: { type: 'python_file', value: 'test.py' }
+        },
         launchedAt: '2026-01-01T00:00:00Z',
         command: 'python3',
         args: ['test.py'],
@@ -204,7 +209,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       jest.spyOn(supervisor, 'getProcess').mockReturnValue({
         handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
         child: mockChild,
-        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        manifest: {
+          id: 'fraud-agent',
+          name: 'Fraud Agent',
+          framework: 'langgraph',
+          entrypoint: { type: 'python_file', value: 'test.py' }
+        },
         launchedAt: '2026-01-01T00:00:00Z',
         command: 'python3',
         args: ['test.py'],
@@ -241,7 +251,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       jest.spyOn(supervisor, 'launch').mockReturnValue({
         handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
         child: mockChild,
-        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        manifest: {
+          id: 'fraud-agent',
+          name: 'Fraud Agent',
+          framework: 'langgraph',
+          entrypoint: { type: 'python_file', value: 'test.py' }
+        },
         launchedAt: '2026-01-01T00:00:00Z',
         command: 'python3',
         args: ['test.py'],
@@ -253,13 +268,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       await provider.attach(buildDefinition(), buildBinding(), ctx);
 
       const bootstrap = writeSpy.mock.calls[0][0];
-      expect(bootstrap.run.sessionId).toBe('sess-uuid-v4');
-      expect(bootstrap.runtime.address).toBe('runtime.local:50051');
-      expect(bootstrap.runtime.bearerToken).toBe('tok-fraud');
-      expect(bootstrap.runtime.tls).toBe(true);
-      expect(bootstrap.runtime.joinMetadata.transport).toBe('grpc');
-      expect(bootstrap.cancelCallback?.host).toBe('127.0.0.1');
-      expect(bootstrap.cancelCallback?.path).toBe('/agent/cancel');
+      expect(bootstrap.session_id).toBe('sess-uuid-v4');
+      expect(bootstrap.runtime_url).toBe('runtime.local:50051');
+      expect(bootstrap.auth_token).toBe('tok-fraud');
+      expect(bootstrap.secure).toBe(true);
+      expect(bootstrap.cancel_callback?.host).toBe('127.0.0.1');
+      expect(bootstrap.cancel_callback?.path).toBe('/agent/cancel');
     });
 
     it('stays on the legacy HTTP transport when no token is configured for the agent', async () => {
@@ -269,7 +283,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       jest.spyOn(supervisor, 'launch').mockReturnValue({
         handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
         child: mockChild,
-        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        manifest: {
+          id: 'fraud-agent',
+          name: 'Fraud Agent',
+          framework: 'langgraph',
+          entrypoint: { type: 'python_file', value: 'test.py' }
+        },
         launchedAt: '2026-01-01T00:00:00Z',
         command: 'python3',
         args: ['test.py'],
@@ -280,9 +299,8 @@ describe('ProcessExampleAgentHostProvider', () => {
       await provider.attach(buildDefinition(), buildBinding(), buildContext());
 
       const bootstrap = writeSpy.mock.calls[0][0];
-      expect(bootstrap.runtime.address).toBeUndefined();
-      expect(bootstrap.runtime.bearerToken).toBeUndefined();
-      expect(bootstrap.runtime.joinMetadata.transport).toBe('http');
+      expect(bootstrap.runtime_url).toBe('');
+      expect(bootstrap.auth_token).toBeUndefined();
     });
 
     it('populates initiator.sessionStart + kickoff only on the initiator agent', async () => {
@@ -297,7 +315,12 @@ describe('ProcessExampleAgentHostProvider', () => {
       jest.spyOn(supervisor, 'launch').mockReturnValue({
         handle: { participantId: 'fraud-agent', runId: 'run-1', pid: 12345, framework: 'langgraph' },
         child: mockChild,
-        manifest: { id: 'fraud-agent', name: 'Fraud Agent', framework: 'langgraph', entrypoint: { type: 'python_file', value: 'test.py' } },
+        manifest: {
+          id: 'fraud-agent',
+          name: 'Fraud Agent',
+          framework: 'langgraph',
+          entrypoint: { type: 'python_file', value: 'test.py' }
+        },
         launchedAt: '2026-01-01T00:00:00Z',
         command: 'python3',
         args: ['test.py'],
@@ -323,8 +346,8 @@ describe('ProcessExampleAgentHostProvider', () => {
       await provider.attach(buildDefinition(), buildBinding({ participantId: 'fraud-agent' }), ctx);
       let bootstrap = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0];
       expect(bootstrap.initiator).toBeDefined();
-      expect(bootstrap.initiator?.sessionStart.intent).toBe('fraud/high-value-new-device');
-      expect(bootstrap.initiator?.kickoff?.messageType).toBe('Proposal');
+      expect(bootstrap.initiator?.session_start.intent).toBe('fraud/high-value-new-device');
+      expect(bootstrap.initiator?.kickoff?.message_type).toBe('Proposal');
 
       await provider.attach(
         buildDefinition({ agentRef: 'risk-agent', name: 'Risk Agent', framework: 'custom' }),

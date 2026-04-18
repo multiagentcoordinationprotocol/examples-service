@@ -37,10 +37,7 @@ describe('PolicyLoaderService', () => {
   beforeEach(() => {
     service = new PolicyLoaderService();
     fsMock.existsSync.mockReturnValue(true);
-    (fsMock.readdirSync as jest.Mock).mockReturnValue([
-      'policy.default.json',
-      'policy.fraud.unanimous.json'
-    ]);
+    (fsMock.readdirSync as jest.Mock).mockReturnValue(['policy.default.json', 'policy.fraud.unanimous.json']);
     fsMock.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
       const p = String(filePath);
       if (p.includes('policy.default.json')) return JSON.stringify(defaultPolicy);

@@ -1,8 +1,4 @@
-import {
-  AgentHostAdapter,
-  PrepareLaunchInput,
-  PreparedLaunch
-} from '../contracts/host-adapter.types';
+import { AgentHostAdapter, PrepareLaunchInput, PreparedLaunch } from '../contracts/host-adapter.types';
 import { AgentFramework, AgentManifest, ManifestValidationResult } from '../contracts/manifest.types';
 import { buildAgentEnv } from './agent-env';
 
@@ -56,7 +52,7 @@ export class CrewAIHostAdapter implements AgentHostAdapter {
 
     const shared = buildAgentEnv(bootstrap, 'crewai');
     const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
+      ...(process.env as Record<string, string>),
       ...(manifest.host?.env ?? {}),
       PYTHONUNBUFFERED: '1',
       ...shared,

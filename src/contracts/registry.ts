@@ -103,6 +103,8 @@ export interface ScenarioVersionFile {
       participants: ParticipantTemplate[];
       commitments?: CommitmentDefinition[];
       contextTemplate?: Record<string, unknown>;
+      contextId?: string;
+      extensions?: Record<string, unknown>;
       kickoffTemplate?: KickoffTemplate[];
       metadataTemplate?: Record<string, unknown>;
     };

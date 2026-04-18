@@ -9,10 +9,7 @@ import { ExampleAgentHostProvider } from './example-agent-host.provider';
 
 @Injectable()
 export class InMemoryExampleAgentHostProvider implements ExampleAgentHostProvider {
-  async resolve(
-    definition: ExampleAgentDefinition,
-    binding: ParticipantAgentBinding
-  ): Promise<HostedExampleAgent> {
+  async resolve(definition: ExampleAgentDefinition, binding: ParticipantAgentBinding): Promise<HostedExampleAgent> {
     return {
       participantId: binding.participantId,
       agentRef: definition.agentRef,

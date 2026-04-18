@@ -1,7 +1,6 @@
 import { AgentProfileService } from './agent-profile.service';
 import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
 import { RegistryIndexService } from '../registry/registry-index.service';
-import { ControlPlaneClient } from '../control-plane/control-plane.client';
 
 describe('AgentProfileService', () => {
   let service: AgentProfileService;
@@ -114,14 +113,9 @@ describe('AgentProfileService', () => {
       getSnapshot: jest.fn().mockResolvedValue(mockSnapshot)
     };
 
-    const mockControlPlaneClient = {
-      getAgentMetrics: jest.fn().mockResolvedValue([])
-    };
-
     service = new AgentProfileService(
       mockAgentCatalog as ExampleAgentCatalogService,
-      mockRegistryIndex as RegistryIndexService,
-      mockControlPlaneClient as unknown as ControlPlaneClient
+      mockRegistryIndex as RegistryIndexService
     );
   });
 
@@ -158,16 +152,6 @@ describe('AgentProfileService', () => {
       expect(fraudAgent.bootstrapStrategy).toBe('external');
       expect(fraudAgent.bootstrapMode).toBe('attached');
       expect(fraudAgent.tags).toEqual(['fraud', 'langgraph']);
-    });
-
-    it('returns zero metrics', async () => {
-      const profiles = await service.listProfiles();
-      expect(profiles[0].metrics).toEqual({
-        runs: 0,
-        signals: 0,
-        averageLatencyMs: 0,
-        averageConfidence: 0
-      });
     });
   });
 

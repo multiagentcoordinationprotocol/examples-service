@@ -117,9 +117,7 @@ export class ExampleAgentCatalogService {
 
   constructor() {
     const manifested = EXAMPLE_AGENT_DEFINITIONS.filter((d) => d.manifest).length;
-    this.logger.log(
-      `loaded ${EXAMPLE_AGENT_DEFINITIONS.length} agent definitions (${manifested} with manifests)`
-    );
+    this.logger.log(`loaded ${EXAMPLE_AGENT_DEFINITIONS.length} agent definitions (${manifested} with manifests)`);
   }
 
   list(): ExampleAgentDefinition[] {
@@ -129,11 +127,7 @@ export class ExampleAgentCatalogService {
   get(agentRef: string): ExampleAgentDefinition {
     const definition = this.definitions.get(agentRef);
     if (!definition) {
-      throw new AppException(
-        ErrorCode.AGENT_NOT_FOUND,
-        `example agent not found: ${agentRef}`,
-        HttpStatus.NOT_FOUND
-      );
+      throw new AppException(ErrorCode.AGENT_NOT_FOUND, `example agent not found: ${agentRef}`, HttpStatus.NOT_FOUND);
     }
     return definition;
   }

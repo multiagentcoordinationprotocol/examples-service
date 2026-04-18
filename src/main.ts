@@ -7,7 +7,9 @@ import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
 import { GlobalExceptionFilter } from './errors/exception.filter';
 
-function buildCorsOrigin(config: AppConfigService): string | string[] | ((origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => void) {
+function buildCorsOrigin(
+  config: AppConfigService
+): string | string[] | ((origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => void) {
   const origins = config.corsOrigin;
 
   if (origins === '*') return '*';
@@ -48,9 +50,7 @@ async function bootstrap() {
   if (config.isDevelopment) {
     const swagger = new DocumentBuilder()
       .setTitle('MACP Example Showcase Service')
-      .setDescription(
-        'File-backed showcase catalog, compiler, and example-agent bootstrap service for MACP demos.'
-      )
+      .setDescription('File-backed showcase catalog, compiler, and example-agent bootstrap service for MACP demos.')
       .setVersion('0.2.0')
       .build();
     const document = SwaggerModule.createDocument(app, swagger);

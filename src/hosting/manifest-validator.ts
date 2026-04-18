@@ -43,9 +43,7 @@ export class ManifestValidator {
 
     const adapterResult = adapter.validateManifest(manifest);
     if (!adapterResult.valid) {
-      this.logger.warn(
-        `manifest validation failed for ${manifest.id}: ${adapterResult.errors.join('; ')}`
-      );
+      this.logger.warn(`manifest validation failed for ${manifest.id}: ${adapterResult.errors.join('; ')}`);
     }
 
     return adapterResult;

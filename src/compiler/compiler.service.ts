@@ -2,12 +2,7 @@ import { Injectable, HttpStatus } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import Ajv from 'ajv';
 import { createScenarioAjv } from './ajv-factory';
-import {
-  CompileLaunchRequest,
-  CompileLaunchResult,
-  InitiatorPayload,
-  PayloadEnvelope
-} from '../contracts/launch';
+import { CompileLaunchRequest, CompileLaunchResult, InitiatorPayload, PayloadEnvelope } from '../contracts/launch';
 import { RunDescriptor } from '../contracts/run-descriptor';
 import { ParticipantAgentBinding } from '../contracts/example-agents';
 import {
@@ -127,7 +122,9 @@ export class CompilerService {
             modeVersion: launch.modeVersion,
             configurationVersion: launch.configurationVersion,
             policyVersion: launch.policyVersion,
-            context
+            context,
+            contextId: launch.contextId,
+            extensions: launch.extensions
           },
           kickoff: firstKickoff
             ? {
@@ -278,12 +275,9 @@ export class CompilerService {
   private validateInputs(scenario: ScenarioVersionFile, inputs: Record<string, unknown>): void {
     const validate = this.ajv.compile(scenario.spec.inputs.schema);
     if (!validate(inputs)) {
-      throw new AppException(
-        ErrorCode.VALIDATION_ERROR,
-        'Input validation failed',
-        HttpStatus.BAD_REQUEST,
-        { errors: validate.errors }
-      );
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Input validation failed', HttpStatus.BAD_REQUEST, {
+        errors: validate.errors
+      });
     }
   }
 }

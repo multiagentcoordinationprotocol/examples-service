@@ -20,7 +20,11 @@ describe('ExamplesController', () => {
         submitToControlPlane: false
       };
       const mockResult = {
-        compiled: { executionRequest: {}, display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' }, participantBindings: [] },
+        compiled: {
+          executionRequest: {},
+          display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' },
+          participantBindings: []
+        },
         hostedAgents: [],
         controlPlane: { baseUrl: 'http://localhost:3001', validated: false, submitted: false }
       };

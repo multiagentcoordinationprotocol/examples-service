@@ -39,7 +39,7 @@ describe('Scenario authoring (integration)', () => {
       ]);
     });
 
-    it('keeps inlined commitments inside executionRequest (scenario-layer only); control-plane RunDescriptor stays scenario-agnostic', async () => {
+    it('keeps inlined commitments inside executionRequest and strips them from runDescriptor', async () => {
       const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       // Commitments resolved from !include DO appear on executionRequest
@@ -48,14 +48,10 @@ describe('Scenario authoring (integration)', () => {
       expect(compiledCommitments).toHaveLength(2);
       expect(compiledCommitments[0].id).toBe('fraud-risk-assessed');
 
-      if (!ctx.mockControlPlane) return; // remote/docker mode skip
-      // But they MUST NOT be forwarded to the control-plane (plan CP-1 +
-      // RFC-MACP-0001 §3): the CP's RunDescriptor contract strips scenario
-      // semantics entirely.
-      const validateBody = ctx.mockControlPlane.validateRequests[0].body as any;
-      const createBody = ctx.mockControlPlane.createRunRequests[0].body as any;
-      expect(validateBody.session.commitments).toBeUndefined();
-      expect(createBody.session.commitments).toBeUndefined();
+      // But they MUST NOT appear on the scenario-agnostic runDescriptor.
+      const descriptor = result.compiled.runDescriptor;
+      const descriptorSession = descriptor.session as Record<string, unknown>;
+      expect(descriptorSession.commitments).toBeUndefined();
     });
 
     it('produces identical compiled output for repeated calls (loader is deterministic with includes)', async () => {

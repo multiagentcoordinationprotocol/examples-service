@@ -78,10 +78,7 @@ export function deepMerge<T extends Record<string, unknown>>(base: T, override: 
       !Array.isArray(baseVal) &&
       !Array.isArray(overVal)
     ) {
-      result[key] = deepMerge(
-        baseVal as Record<string, unknown>,
-        overVal as Record<string, unknown>
-      ) as T[keyof T];
+      result[key] = deepMerge(baseVal as Record<string, unknown>, overVal as Record<string, unknown>) as T[keyof T];
     } else {
       result[key] = overVal as T[keyof T];
     }

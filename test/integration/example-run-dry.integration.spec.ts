@@ -16,33 +16,30 @@ describe('Example Run - Dry Run (integration)', () => {
     if (ctx) await ctx.cleanup();
   });
 
-  describe('POST /examples/run with submitToControlPlane=false', () => {
-    it('compiles and resolves agents without calling control plane', async () => {
+  describe('POST /examples/run with bootstrapAgents=false', () => {
+    it('compiles and returns empty hostedAgents without bootstrapping', async () => {
       const result = (await ctx.client.runExample(
-        fraudScenarioRunRequest({ submitToControlPlane: false })
+        fraudScenarioRunRequest({ bootstrapAgents: false })
       )) as any;
 
       expect(result.compiled).toBeDefined();
       expect(result.compiled.executionRequest).toBeDefined();
-      expect(result.controlPlane.submitted).toBe(false);
-      expect(result.controlPlane.validated).toBe(false);
+      expect(result.hostedAgents).toHaveLength(0);
+      expect(result.sessionId).toBeUndefined();
     });
+  });
 
+  describe('POST /examples/run (with bootstrap)', () => {
     it('resolves 4 hosted agents with correct frameworks', async () => {
-      const result = (await ctx.client.runExample(
-        fraudScenarioRunRequest({ submitToControlPlane: false })
-      )) as any;
+      const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       expect(result.hostedAgents).toHaveLength(4);
-
       const frameworks = result.hostedAgents.map((a: any) => a.framework).sort();
       expect(frameworks).toEqual(['crewai', 'custom', 'langchain', 'langgraph']);
     });
 
     it('each hosted agent has transport identity and metadata', async () => {
-      const result = (await ctx.client.runExample(
-        fraudScenarioRunRequest({ submitToControlPlane: false })
-      )) as any;
+      const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       for (const agent of result.hostedAgents) {
         expect(agent.transportIdentity).toContain('agent://');
@@ -55,46 +52,23 @@ describe('Example Run - Dry Run (integration)', () => {
         expect(agent.status).toBeDefined();
       }
     });
-
-    it('with bootstrapAgents=false returns empty hostedAgents', async () => {
-      const result = (await ctx.client.runExample(
-        fraudScenarioRunRequest({ submitToControlPlane: false, bootstrapAgents: false })
-      )) as any;
-
-      expect(result.hostedAgents).toHaveLength(0);
-      expect(result.compiled.executionRequest).toBeDefined();
-    });
-
-    if ((process.env.INTEGRATION_CONTROL_PLANE ?? 'mock') === 'mock') {
-      it('mock control plane received zero requests', async () => {
-        ctx.mockControlPlane!.clearRequests();
-
-        await ctx.client.runExample(fraudScenarioRunRequest({ submitToControlPlane: false }));
-
-        expect(ctx.mockControlPlane!.requests).toHaveLength(0);
-      });
-    }
   });
 
-  describe('Cross-pack dry runs', () => {
-    it('dry run with lending scenario resolves 4 agents', async () => {
-      const result = (await ctx.client.runExample(
-        lendingScenarioRunRequest({ submitToControlPlane: false })
-      )) as any;
+  describe('Cross-pack runs', () => {
+    it('lending scenario resolves 4 agents with correct context', async () => {
+      const result = (await ctx.client.runExample(lendingScenarioRunRequest())) as any;
 
       expect(result.hostedAgents).toHaveLength(4);
       expect(result.compiled.executionRequest.session.context.loanAmount).toBe(25000);
-      expect(result.controlPlane.submitted).toBe(false);
+      expect(result.sessionId).toBeDefined();
     });
 
-    it('dry run with claims scenario resolves 4 agents', async () => {
-      const result = (await ctx.client.runExample(
-        claimsScenarioRunRequest({ submitToControlPlane: false })
-      )) as any;
+    it('claims scenario resolves 4 agents with correct context', async () => {
+      const result = (await ctx.client.runExample(claimsScenarioRunRequest())) as any;
 
       expect(result.hostedAgents).toHaveLength(4);
       expect(result.compiled.executionRequest.session.context.claimAmount).toBe(8500);
-      expect(result.controlPlane.submitted).toBe(false);
+      expect(result.sessionId).toBeDefined();
     });
   });
 });

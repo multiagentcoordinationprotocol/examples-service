@@ -8,11 +8,6 @@ export class RunExampleRequestDto extends CompileLaunchRequestDto {
   @IsBoolean()
   bootstrapAgents?: boolean;
 
-  @ApiPropertyOptional({ default: true, description: 'Submit the compiled execution request to the control plane.' })
-  @IsOptional()
-  @IsBoolean()
-  submitToControlPlane?: boolean;
-
   @ApiPropertyOptional({
     type: [String],
     description: 'Additional tags to merge into execution.tags.',

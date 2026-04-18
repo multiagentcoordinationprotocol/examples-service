@@ -1,19 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class AgentMetricsDto {
-  @ApiProperty({ example: 0, description: 'Number of runs this agent has participated in.' })
-  runs!: number;
-
-  @ApiProperty({ example: 0, description: 'Number of signals this agent has sent.' })
-  signals!: number;
-
-  @ApiProperty({ example: 0, description: 'Average run duration in milliseconds.' })
-  averageLatencyMs!: number;
-
-  @ApiProperty({ example: 0, description: 'Reserved for future use.' })
-  averageConfidence!: number;
-}
-
 export class AgentProfileDto {
   @ApiProperty({ example: 'fraud-agent' })
   agentRef!: string;
@@ -51,7 +37,4 @@ export class AgentProfileDto {
     description: 'Scenario refs this agent participates in, computed from registry.'
   })
   scenarios!: string[];
-
-  @ApiProperty({ type: AgentMetricsDto, description: 'Best-effort metrics from control plane.' })
-  metrics!: AgentMetricsDto;
 }

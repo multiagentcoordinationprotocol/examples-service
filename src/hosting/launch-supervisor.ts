@@ -34,7 +34,8 @@ export class LaunchSupervisor implements OnModuleDestroy {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const fileName = `${bootstrap.run.runId}_${bootstrap.participant.participantId}_${Date.now()}.json`;
+    const runId = bootstrap.metadata?.run_id ?? bootstrap.session_id;
+    const fileName = `${runId}_${bootstrap.participant_id}_${Date.now()}.json`;
     const filePath = path.join(dir, fileName);
     fs.writeFileSync(filePath, JSON.stringify(bootstrap, null, 2), 'utf-8');
     return filePath;
@@ -46,8 +47,8 @@ export class LaunchSupervisor implements OnModuleDestroy {
     bootstrap: BootstrapPayload,
     bootstrapFilePath: string
   ): SupervisedProcess {
-    const { runId } = bootstrap.run;
-    const { participantId } = bootstrap.participant;
+    const runId = bootstrap.metadata?.run_id ?? bootstrap.session_id;
+    const participantId = bootstrap.participant_id;
     const key = this.makeKey(runId, participantId);
 
     const existing = this.processes.get(key);
@@ -63,9 +64,7 @@ export class LaunchSupervisor implements OnModuleDestroy {
 
     const logPrefix = `[${manifest.framework}:${participantId}:${runId}]`;
 
-    this.logger.log(
-      `${logPrefix} launching: ${prepared.command} ${prepared.args.join(' ')}`
-    );
+    this.logger.log(`${logPrefix} launching: ${prepared.command} ${prepared.args.join(' ')}`);
 
     const child = spawn(prepared.command, prepared.args, {
       cwd: prepared.cwd,
@@ -205,9 +204,7 @@ export class LaunchSupervisor implements OnModuleDestroy {
       record.exitSignal = signal;
       record.healthStatus = 'stopped';
       const level = code === 0 ? 'log' : 'warn';
-      this.logger[level](
-        `${logPrefix} exited code=${code ?? 'null'} signal=${signal ?? 'null'}`
-      );
+      this.logger[level](`${logPrefix} exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
       this.cleanupBootstrapFile(record.bootstrapFilePath);
       this.processes.delete(key);
     });
@@ -220,13 +217,16 @@ export class LaunchSupervisor implements OnModuleDestroy {
   }
 
   private setupStartupTimeout(key: string, logPrefix: string, timeoutMs: number): void {
-    setTimeout(() => {
-      const record = this.processes.get(key);
-      if (record?.healthStatus === 'starting') {
-        record.healthStatus = 'healthy';
-        this.logger.log(`${logPrefix} assumed healthy after ${timeoutMs}ms startup window`);
-      }
-    }, Math.min(timeoutMs, 5000));
+    setTimeout(
+      () => {
+        const record = this.processes.get(key);
+        if (record?.healthStatus === 'starting') {
+          record.healthStatus = 'healthy';
+          this.logger.log(`${logPrefix} assumed healthy after ${timeoutMs}ms startup window`);
+        }
+      },
+      Math.min(timeoutMs, 5000)
+    );
   }
 
   private cleanupBootstrapFile(filePath: string): void {

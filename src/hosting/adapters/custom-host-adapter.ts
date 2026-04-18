@@ -1,10 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {
-  AgentHostAdapter,
-  PrepareLaunchInput,
-  PreparedLaunch
-} from '../contracts/host-adapter.types';
+import { AgentHostAdapter, PrepareLaunchInput, PreparedLaunch } from '../contracts/host-adapter.types';
 import { AgentFramework, AgentManifest, ManifestValidationResult } from '../contracts/manifest.types';
 import { buildAgentEnv } from './agent-env';
 
@@ -33,9 +29,7 @@ export class CustomHostAdapter implements AgentHostAdapter {
     const entrypoint = this.resolveEntrypoint(manifest.entrypoint.value, manifest.entrypoint.type, cwd);
 
     const isNode = manifest.entrypoint.type === 'node_file';
-    const command = isNode
-      ? (manifest.host?.node ?? process.execPath)
-      : (manifest.host?.python ?? 'python3');
+    const command = isNode ? (manifest.host?.node ?? process.execPath) : (manifest.host?.python ?? 'python3');
 
     const args = isNode
       ? [entrypoint, ...(manifest.host?.args ?? [])]
@@ -45,7 +39,7 @@ export class CustomHostAdapter implements AgentHostAdapter {
 
     const shared = buildAgentEnv(bootstrap, 'custom');
     const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
+      ...(process.env as Record<string, string>),
       ...(manifest.host?.env ?? {}),
       ...shared,
       EXAMPLE_AGENT_ENTRYPOINT: manifest.entrypoint.value

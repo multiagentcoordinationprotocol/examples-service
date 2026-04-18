@@ -36,10 +36,7 @@ describe('loadYamlWithIncludes', () => {
 
   it('inlines a sibling YAML file', () => {
     writeFile('participants.yaml', '- id: agent-1\n  role: x\n');
-    const main = writeFile(
-      'scenario.yaml',
-      'name: test\nparticipants: !include ./participants.yaml\n'
-    );
+    const main = writeFile('scenario.yaml', 'name: test\nparticipants: !include ./participants.yaml\n');
     const result = loadYamlWithIncludes(main, tmpRoot) as Record<string, unknown>;
     expect(result).toEqual({ name: 'test', participants: [{ id: 'agent-1', role: 'x' }] });
   });
@@ -147,10 +144,7 @@ describe('loadYamlWithIncludes', () => {
 
   it('allows two siblings to include the same fragment without flagging a cycle', () => {
     writeFile('shared.yaml', 'value: 42\n');
-    const main = writeFile(
-      'a.yaml',
-      'first: !include ./shared.yaml\nsecond: !include ./shared.yaml\n'
-    );
+    const main = writeFile('a.yaml', 'first: !include ./shared.yaml\nsecond: !include ./shared.yaml\n');
     const result = loadYamlWithIncludes(main, tmpRoot) as Record<string, unknown>;
     expect(result).toEqual({ first: { value: 42 }, second: { value: 42 } });
   });

@@ -1,7 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ExampleAgentCatalogService } from '../example-agents/example-agent-catalog.service';
 import { RegistryIndexService } from '../registry/registry-index.service';
-import { ControlPlaneClient, AgentMetricsEntry } from '../control-plane/control-plane.client';
 
 export interface AgentProfile {
   agentRef: string;
@@ -15,29 +14,19 @@ export interface AgentProfile {
   bootstrapMode: string;
   tags?: string[];
   scenarios: string[];
-  metrics: {
-    runs: number;
-    signals: number;
-    averageLatencyMs: number;
-    averageConfidence: number;
-  };
 }
 
 @Injectable()
 export class AgentProfileService {
-  private readonly logger = new Logger(AgentProfileService.name);
-
   constructor(
     private readonly agentCatalog: ExampleAgentCatalogService,
-    private readonly registryIndex: RegistryIndexService,
-    private readonly controlPlaneClient: ControlPlaneClient
+    private readonly registryIndex: RegistryIndexService
   ) {}
 
   async listProfiles(): Promise<AgentProfile[]> {
-    const [definitions, scenarioMap, metricsMap] = await Promise.all([
+    const [definitions, scenarioMap] = await Promise.all([
       Promise.resolve(this.agentCatalog.list()),
-      this.buildScenarioCoverageMap(),
-      this.fetchAgentMetrics()
+      this.buildScenarioCoverageMap()
     ]);
 
     return definitions.map((definition) => ({
@@ -51,16 +40,14 @@ export class AgentProfileService {
       bootstrapStrategy: definition.bootstrap.strategy,
       bootstrapMode: definition.bootstrap.mode,
       tags: definition.tags,
-      scenarios: scenarioMap.get(definition.agentRef) ?? [],
-      metrics: this.resolveMetrics(definition.agentRef, metricsMap)
+      scenarios: scenarioMap.get(definition.agentRef) ?? []
     }));
   }
 
   async getProfile(agentRef: string): Promise<AgentProfile> {
-    const [definition, scenarioMap, metricsMap] = await Promise.all([
+    const [definition, scenarioMap] = await Promise.all([
       Promise.resolve(this.agentCatalog.get(agentRef)),
-      this.buildScenarioCoverageMap(),
-      this.fetchAgentMetrics()
+      this.buildScenarioCoverageMap()
     ]);
 
     return {
@@ -74,37 +61,8 @@ export class AgentProfileService {
       bootstrapStrategy: definition.bootstrap.strategy,
       bootstrapMode: definition.bootstrap.mode,
       tags: definition.tags,
-      scenarios: scenarioMap.get(definition.agentRef) ?? [],
-      metrics: this.resolveMetrics(definition.agentRef, metricsMap)
+      scenarios: scenarioMap.get(definition.agentRef) ?? []
     };
-  }
-
-  private resolveMetrics(
-    agentRef: string,
-    metricsMap: Map<string, AgentMetricsEntry>
-  ): AgentProfile['metrics'] {
-    const entry = metricsMap.get(agentRef);
-    if (!entry) return { runs: 0, signals: 0, averageLatencyMs: 0, averageConfidence: 0 };
-    return {
-      runs: entry.runs,
-      signals: entry.signals,
-      averageLatencyMs: 0,
-      averageConfidence: entry.averageConfidence
-    };
-  }
-
-  private async fetchAgentMetrics(): Promise<Map<string, AgentMetricsEntry>> {
-    try {
-      const entries = await this.controlPlaneClient.getAgentMetrics();
-      const map = new Map<string, AgentMetricsEntry>();
-      for (const entry of entries) {
-        map.set(entry.participantId, entry);
-      }
-      return map;
-    } catch (err) {
-      this.logger.warn(`Failed to fetch agent metrics from control plane: ${err instanceof Error ? err.message : String(err)}`);
-      return new Map();
-    }
   }
 
   private async buildScenarioCoverageMap(): Promise<Map<string, string[]>> {
