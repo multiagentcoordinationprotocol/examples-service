@@ -3,38 +3,28 @@ import { BootstrapPayload } from '../contracts/bootstrap.types';
 
 function fullBootstrap(overrides: Partial<BootstrapPayload> = {}): BootstrapPayload {
   return {
-    run: { runId: 'run-1', sessionId: 'sess-uuid-v4', traceId: 'trace-1' },
-    participant: {
-      participantId: 'fraud-agent',
-      agentId: 'fraud-agent',
-      displayName: 'Fraud Agent',
-      role: 'fraud'
+    participant_id: 'fraud-agent',
+    session_id: 'sess-uuid-v4',
+    mode: 'macp.mode.decision.v1',
+    runtime_url: 'runtime.local:50051',
+    auth_token: 'tok-fraud',
+    secure: true,
+    allow_insecure: false,
+    participants: ['fraud-agent', 'risk-agent'],
+    mode_version: '1.0.0',
+    configuration_version: 'config.default',
+    policy_version: 'policy.default',
+    cancel_callback: { host: '127.0.0.1', port: 9123, path: '/agent/cancel' },
+    metadata: {
+      run_id: 'run-1',
+      trace_id: 'trace-1',
+      scenario_ref: 'fraud/high-value-new-device@1.0.0',
+      role: 'fraud',
+      framework: 'langgraph',
+      agent_ref: 'fraud-agent',
+      policy_hints: { type: 'majority', threshold: 0.5 },
+      session_context: { transactionAmount: 3200 }
     },
-    runtime: {
-      address: 'runtime.local:50051',
-      bearerToken: 'tok-fraud',
-      tls: true,
-      allowInsecure: false,
-      baseUrl: 'http://localhost:3001',
-      messageEndpoint: '/runs/run-1/messages',
-      eventsEndpoint: '/runs/run-1/events',
-      apiKey: 'cp-key',
-      timeoutMs: 5000,
-      joinMetadata: { transport: 'grpc', messageFormat: 'macp' }
-    },
-    execution: {
-      scenarioRef: 'fraud/high-value-new-device@1.0.0',
-      modeName: 'macp.mode.decision.v1',
-      modeVersion: '1.0.0',
-      configurationVersion: 'config.default',
-      policyVersion: 'policy.default',
-      policyHints: { type: 'majority', threshold: 0.5 },
-      ttlMs: 300000,
-      initiatorParticipantId: 'risk-agent'
-    },
-    session: { context: { transactionAmount: 3200 }, participants: ['fraud-agent', 'risk-agent'] },
-    agent: { manifest: {}, framework: 'langgraph' },
-    cancelCallback: { host: '127.0.0.1', port: 9123, path: '/agent/cancel' },
     ...overrides
   };
 }
@@ -52,13 +42,10 @@ describe('buildAgentEnv', () => {
   it('emits empty strings for runtime creds when direct-agent-auth is not configured', () => {
     const env = buildAgentEnv(
       fullBootstrap({
-        runtime: {
-          ...fullBootstrap().runtime,
-          address: undefined,
-          bearerToken: undefined,
-          tls: undefined,
-          allowInsecure: undefined
-        }
+        runtime_url: undefined,
+        auth_token: undefined,
+        secure: undefined,
+        allow_insecure: undefined
       }),
       'langgraph'
     );
@@ -77,23 +64,14 @@ describe('buildAgentEnv', () => {
   });
 
   it('leaves cancel-callback vars empty when no callback is configured', () => {
-    const env = buildAgentEnv(fullBootstrap({ cancelCallback: undefined }), 'langgraph');
+    const env = buildAgentEnv(fullBootstrap({ cancel_callback: undefined }), 'langgraph');
     expect(env.MACP_CANCEL_CALLBACK_HOST).toBe('');
     expect(env.MACP_CANCEL_CALLBACK_PORT).toBe('');
     expect(env.MACP_CANCEL_CALLBACK_PATH).toBe('');
   });
 
-  it('serializes scenario context + participants as JSON strings for legacy worker consumers', () => {
-    const env = buildAgentEnv(fullBootstrap(), 'langgraph');
-    expect(JSON.parse(env.EXAMPLE_AGENT_CONTEXT_JSON)).toEqual({ transactionAmount: 3200 });
-    expect(JSON.parse(env.EXAMPLE_AGENT_PARTICIPANTS_JSON)).toEqual(['fraud-agent', 'risk-agent']);
-    expect(JSON.parse(env.EXAMPLE_AGENT_POLICY_HINTS_JSON)).toEqual({ type: 'majority', threshold: 0.5 });
-  });
-
-  it('stamps framework consistently across MACP_FRAMEWORK, EXAMPLE_AGENT_FRAMEWORK, and transport identity', () => {
+  it('stamps MACP_FRAMEWORK from the framework argument', () => {
     const env = buildAgentEnv(fullBootstrap(), 'crewai');
     expect(env.MACP_FRAMEWORK).toBe('crewai');
-    expect(env.EXAMPLE_AGENT_FRAMEWORK).toBe('crewai');
-    expect(env.EXAMPLE_AGENT_TRANSPORT_IDENTITY).toBe('agent://fraud-agent');
   });
 });

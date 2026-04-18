@@ -5,7 +5,6 @@ import { AgentProfileService } from './catalog/agent-profile.service';
 import { CatalogService } from './catalog/catalog.service';
 import { CompilerService } from './compiler/compiler.service';
 import { ConfigModule } from './config/config.module';
-import { ControlPlaneClient } from './control-plane/control-plane.client';
 import { AgentsController } from './controllers/agents.controller';
 import { CatalogController } from './controllers/catalog.controller';
 import { ExamplesController } from './controllers/examples.controller';
@@ -28,10 +27,7 @@ import { FileRegistryLoader } from './registry/file-registry.loader';
 import { RegistryIndexService } from './registry/registry-index.service';
 
 @Module({
-  imports: [
-    ConfigModule,
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])
-  ],
+  imports: [ConfigModule, ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])],
   controllers: [HealthController, CatalogController, LaunchController, ExamplesController, AgentsController],
   providers: [
     FileRegistryLoader,
@@ -51,7 +47,6 @@ import { RegistryIndexService } from './registry/registry-index.service';
     },
     HostingService,
     PolicyLoaderService,
-    ControlPlaneClient,
     ExampleRunService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: ApiKeyGuard }

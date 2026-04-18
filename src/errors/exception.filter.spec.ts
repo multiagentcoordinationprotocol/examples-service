@@ -45,9 +45,7 @@ describe('GlobalExceptionFilter', () => {
 
     filter.catch(exception, host);
 
-    expect(mockJson).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: 404 })
-    );
+    expect(mockJson).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
   });
 
   it('should handle HttpException with string response', () => {

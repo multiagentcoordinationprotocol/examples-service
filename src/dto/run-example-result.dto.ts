@@ -39,26 +39,6 @@ class HostedAgentDto {
   notes?: string[];
 }
 
-class ControlPlaneLaunchDto {
-  @ApiProperty()
-  baseUrl!: string;
-
-  @ApiProperty()
-  validated!: boolean;
-
-  @ApiProperty()
-  submitted!: boolean;
-
-  @ApiPropertyOptional()
-  runId?: string;
-
-  @ApiPropertyOptional()
-  status?: string;
-
-  @ApiPropertyOptional()
-  traceId?: string;
-}
-
 export class RunExampleResultDto {
   @ApiProperty({ type: CompileLaunchResultDto })
   compiled!: CompileLaunchResultDto;
@@ -66,6 +46,6 @@ export class RunExampleResultDto {
   @ApiProperty({ type: [HostedAgentDto] })
   hostedAgents!: HostedAgentDto[];
 
-  @ApiPropertyOptional({ type: ControlPlaneLaunchDto })
-  controlPlane?: ControlPlaneLaunchDto;
+  @ApiPropertyOptional()
+  sessionId?: string;
 }

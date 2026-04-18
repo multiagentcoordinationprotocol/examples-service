@@ -31,24 +31,21 @@ function buildManifest(): AgentManifest {
 
 function buildBootstrap(): BootstrapPayload {
   return {
-    run: { runId: 'run-1', sessionId: 'sess-uuid-v4', traceId: 'trace-1' },
-    participant: { participantId: 'fraud-agent', agentId: 'fraud-agent', displayName: 'Fraud Agent', role: 'fraud' },
-    runtime: {
-      baseUrl: 'http://localhost:3001',
-      messageEndpoint: '/runs/run-1/messages',
-      eventsEndpoint: '/runs/run-1/events',
-      timeoutMs: 10000,
-      joinMetadata: { transport: 'http', messageFormat: 'macp' }
-    },
-    execution: {
-      scenarioRef: 'fraud/test@1.0.0',
-      modeName: 'macp.mode.decision.v1',
-      modeVersion: '1.0.0',
-      configurationVersion: 'config.default',
-      ttlMs: 300000
-    },
-    session: { context: {}, participants: ['fraud-agent', 'risk-agent'] },
-    agent: { manifest: {}, framework: 'langgraph' }
+    participant_id: 'fraud-agent',
+    session_id: 'sess-uuid-v4',
+    mode: 'macp.mode.decision.v1',
+    runtime_url: '',
+    participants: ['fraud-agent', 'risk-agent'],
+    mode_version: '1.0.0',
+    configuration_version: 'config.default',
+    metadata: {
+      run_id: 'run-1',
+      trace_id: 'trace-1',
+      scenario_ref: 'fraud/test@1.0.0',
+      role: 'fraud',
+      framework: 'langgraph',
+      agent_ref: 'fraud-agent'
+    }
   };
 }
 
@@ -145,7 +142,7 @@ describe('LaunchSupervisor', () => {
       supervisor.launch(buildPrepared(), buildManifest(), buildBootstrap(), '/tmp/b1.json');
 
       const bootstrap2 = buildBootstrap();
-      bootstrap2.participant.participantId = 'growth-agent';
+      bootstrap2.participant_id = 'growth-agent';
       supervisor.launch(buildPrepared(), buildManifest(), bootstrap2, '/tmp/b2.json');
 
       const processes = supervisor.getProcessesForRun('run-1');

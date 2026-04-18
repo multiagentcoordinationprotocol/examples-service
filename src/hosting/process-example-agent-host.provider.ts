@@ -28,10 +28,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     private readonly manifestValidator: ManifestValidator
   ) {}
 
-  async resolve(
-    definition: ExampleAgentDefinition,
-    binding: ParticipantAgentBinding
-  ): Promise<HostedExampleAgent> {
+  async resolve(definition: ExampleAgentDefinition, binding: ParticipantAgentBinding): Promise<HostedExampleAgent> {
     return {
       participantId: binding.participantId,
       agentRef: definition.agentRef,
@@ -123,9 +120,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
 
     const validation = this.manifestValidator.validate(manifest);
     if (!validation.valid) {
-      this.logger.error(
-        `manifest validation failed for ${definition.agentRef}: ${validation.errors.join('; ')}`
-      );
+      this.logger.error(`manifest validation failed for ${definition.agentRef}: ${validation.errors.join('; ')}`);
       return {
         ...base,
         status: 'resolved',
@@ -192,10 +187,9 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     const args = [entrypoint, ...(definition.bootstrap.args ?? [])];
     const bearerToken = this.resolveAgentToken(binding, definition);
     const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
+      ...(process.env as Record<string, string>),
       ...(definition.bootstrap.env ?? {}),
       MACP_BOOTSTRAP_FILE: bootstrapFilePath,
-      MACP_CONTROL_PLANE_URL: this.config.controlPlaneBaseUrl,
       MACP_LOG_LEVEL: 'info',
       MACP_FRAMEWORK: definition.framework,
       MACP_PARTICIPANT_ID: binding.participantId,
@@ -204,29 +198,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
       MACP_RUNTIME_ADDRESS: this.config.runtimeAddress,
       MACP_RUNTIME_TLS: String(this.config.runtimeTls),
       MACP_RUNTIME_ALLOW_INSECURE: String(this.config.runtimeAllowInsecure),
-      MACP_RUNTIME_TOKEN: bearerToken ?? '',
-      CONTROL_PLANE_BASE_URL: this.config.controlPlaneBaseUrl,
-      CONTROL_PLANE_API_KEY: this.config.controlPlaneApiKey ?? '',
-      CONTROL_PLANE_TIMEOUT_MS: String(this.config.controlPlaneTimeoutMs ?? 10000),
-      EXAMPLE_AGENT_RUN_ID: context.runId,
-      EXAMPLE_AGENT_SESSION_ID: context.sessionId ?? '',
-      EXAMPLE_AGENT_TRACE_ID: context.traceId ?? '',
-      EXAMPLE_AGENT_SCENARIO_REF: context.scenarioRef,
-      EXAMPLE_AGENT_MODE_NAME: context.modeName,
-      EXAMPLE_AGENT_MODE_VERSION: context.modeVersion,
-      EXAMPLE_AGENT_CONFIGURATION_VERSION: context.configurationVersion,
-      EXAMPLE_AGENT_POLICY_VERSION: context.policyVersion ?? '',
-      EXAMPLE_AGENT_POLICY_HINTS_JSON: JSON.stringify(context.policyHints ?? {}),
-      EXAMPLE_AGENT_SESSION_TTL_MS: String(context.ttlMs),
-      EXAMPLE_AGENT_CONTEXT_JSON: JSON.stringify(context.sessionContext ?? {}),
-      EXAMPLE_AGENT_INITIATOR_PARTICIPANT_ID: context.initiatorParticipantId ?? '',
-      EXAMPLE_AGENT_PARTICIPANTS_JSON: JSON.stringify(context.participants),
-      EXAMPLE_AGENT_REF: definition.agentRef,
-      EXAMPLE_AGENT_PARTICIPANT_ID: binding.participantId,
-      EXAMPLE_AGENT_ROLE: binding.role,
-      EXAMPLE_AGENT_FRAMEWORK: definition.framework,
-      EXAMPLE_AGENT_TRANSPORT_IDENTITY: definition.bootstrap.transportIdentity,
-      EXAMPLE_AGENT_ENTRYPOINT: definition.bootstrap.entrypoint
+      MACP_RUNTIME_TOKEN: bearerToken ?? ''
     };
 
     const prepared = {
@@ -259,85 +231,70 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     definition: ExampleAgentDefinition,
     binding: ParticipantAgentBinding,
     context: ExampleAgentRunContext,
-    manifest: AgentManifest
+    _manifest: AgentManifest
   ): BootstrapPayload {
-    const runtimeAddress = this.config.runtimeAddress || undefined;
+    const runtimeAddress = this.config.runtimeAddress || '';
     const bearerToken = this.resolveAgentToken(binding, definition);
-    const useDirectGrpc = Boolean(runtimeAddress && bearerToken);
-    const isInitiator =
-      context.initiator?.participantId === binding.participantId;
+    const isInitiator = context.initiator?.participantId === binding.participantId;
+    const cancelCb = this.allocateCancelCallback(binding.participantId, context.runId);
+
+    const initiatorData = context.initiator;
 
     return {
-      run: {
-        runId: context.runId,
-        sessionId: context.sessionId ?? '',
-        traceId: context.traceId
-      },
-      participant: {
-        participantId: binding.participantId,
-        agentId: definition.agentRef,
-        displayName: definition.name,
-        role: binding.role
-      },
-      runtime: {
-        address: runtimeAddress,
-        bearerToken,
-        tls: useDirectGrpc ? this.config.runtimeTls : undefined,
-        allowInsecure: useDirectGrpc ? this.config.runtimeAllowInsecure : undefined,
-        baseUrl: this.config.controlPlaneBaseUrl,
-        messageEndpoint: `/runs/${context.runId}/messages`,
-        eventsEndpoint: `/runs/${context.runId}/events`,
-        apiKey: this.config.controlPlaneApiKey,
-        timeoutMs: this.config.controlPlaneTimeoutMs,
-        joinMetadata: {
-          transport: useDirectGrpc ? 'grpc' : 'http',
-          messageFormat: 'macp'
-        }
-      },
-      execution: {
-        scenarioRef: context.scenarioRef,
-        modeName: context.modeName,
-        modeVersion: context.modeVersion,
-        configurationVersion: context.configurationVersion,
-        policyVersion: context.policyVersion,
-        policyHints: context.policyHints,
-        ttlMs: context.ttlMs,
-        initiatorParticipantId: context.initiatorParticipantId,
-        requester: 'example-service'
-      },
-      session: {
-        context: context.sessionContext ?? {},
-        participants: context.participants
-      },
-      agent: {
-        manifest: manifest as unknown as Record<string, unknown>,
+      participant_id: binding.participantId,
+      session_id: context.sessionId ?? '',
+      mode: context.modeName,
+      runtime_url: runtimeAddress,
+      auth_token: bearerToken,
+      secure: this.config.runtimeTls,
+      allow_insecure: this.config.runtimeAllowInsecure,
+      participants: context.participants,
+      mode_version: context.modeVersion,
+      configuration_version: context.configurationVersion,
+      policy_version: context.policyVersion,
+      initiator:
+        isInitiator && initiatorData
+          ? {
+              session_start: {
+                intent: initiatorData.sessionStart.intent,
+                participants: initiatorData.sessionStart.participants,
+                ttl_ms: initiatorData.sessionStart.ttlMs,
+                mode_version: initiatorData.sessionStart.modeVersion,
+                configuration_version: initiatorData.sessionStart.configurationVersion,
+                policy_version: initiatorData.sessionStart.policyVersion,
+                context: initiatorData.sessionStart.context,
+                context_id: initiatorData.sessionStart.contextId,
+                extensions: initiatorData.sessionStart.extensions,
+                roots: initiatorData.sessionStart.roots
+              },
+              kickoff: initiatorData.kickoff
+                ? {
+                    message_type: initiatorData.kickoff.messageType,
+                    payload_type: initiatorData.kickoff.payloadType,
+                    payload: initiatorData.kickoff.payload
+                  }
+                : undefined
+            }
+          : undefined,
+      cancel_callback: cancelCb,
+      metadata: {
+        run_id: context.runId,
+        trace_id: context.traceId,
+        scenario_ref: context.scenarioRef,
+        role: binding.role,
         framework: definition.framework,
-        frameworkConfig: manifest.frameworkConfig
-      },
-      initiator: isInitiator
-        ? {
-            sessionStart: context.initiator!.sessionStart,
-            kickoff: context.initiator!.kickoff
-          }
-        : undefined,
-      cancelCallback: this.allocateCancelCallback(binding.participantId, context.runId)
+        agent_ref: definition.agentRef,
+        policy_hints: context.policyHints,
+        session_context: context.sessionContext
+      }
     };
   }
 
-  private resolveAgentToken(
-    binding: ParticipantAgentBinding,
-    definition: ExampleAgentDefinition
-  ): string | undefined {
-    return (
-      this.config.resolveAgentToken(binding.participantId) ??
-      this.config.resolveAgentToken(definition.agentRef)
-    );
+  private resolveAgentToken(binding: ParticipantAgentBinding, definition: ExampleAgentDefinition): string | undefined {
+    return this.config.resolveAgentToken(binding.participantId) ?? this.config.resolveAgentToken(definition.agentRef);
   }
 
-  private allocateCancelCallback(
-    participantId: string,
-    runId: string
-  ): BootstrapPayload['cancelCallback'] {
+  private allocateCancelCallback(participantId: string, runId: string): BootstrapPayload['cancel_callback'] {
     const host = this.config.cancelCallbackHost;
     if (!host) return undefined;
     const base = this.config.cancelCallbackPortBase;
@@ -371,14 +328,12 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     return definition.bootstrap.entrypoint.endsWith('.py') ? 'python' : 'node';
   }
 
-  private resolveEntrypoint(
-    definition: ExampleAgentDefinition,
-    launcher: 'node' | 'python'
-  ): string {
+  private resolveEntrypoint(definition: ExampleAgentDefinition, launcher: 'node' | 'python'): string {
     const logicalEntrypoint = definition.bootstrap.entrypoint;
-    const diskPath = launcher === 'node'
-      ? this.resolveNodeEntrypoint(logicalEntrypoint)
-      : path.resolve(process.cwd(), logicalEntrypoint);
+    const diskPath =
+      launcher === 'node'
+        ? this.resolveNodeEntrypoint(logicalEntrypoint)
+        : path.resolve(process.cwd(), logicalEntrypoint);
 
     if (!fs.existsSync(diskPath)) {
       throw new AppException(

@@ -17,7 +17,17 @@ export class CompileLaunchRequestDto {
   @IsIn(['live', 'sandbox'])
   mode?: 'live' | 'sandbox';
 
-  @ApiProperty({ type: 'object', additionalProperties: true, example: { transactionAmount: 3200, deviceTrustScore: 0.12, accountAgeDays: 5, isVipCustomer: true, priorChargebacks: 1 } })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      transactionAmount: 3200,
+      deviceTrustScore: 0.12,
+      accountAgeDays: 5,
+      isVipCustomer: true,
+      priorChargebacks: 1
+    }
+  })
   @IsObject()
   inputs!: Record<string, unknown>;
 }

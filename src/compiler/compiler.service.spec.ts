@@ -120,9 +120,7 @@ describe('CompilerService', () => {
       expect(result.executionRequest.kickoff).toHaveLength(1);
       expect(result.executionRequest.kickoff?.[0].messageType).toBe('Proposal');
       expect(result.executionRequest.execution?.tags).toEqual(['example', 'fraud', 'test', 'demo']);
-      expect(result.participantBindings).toEqual([
-        { participantId: 'agent-1', role: 'tester', agentRef: 'agent-1' }
-      ]);
+      expect(result.participantBindings).toEqual([{ participantId: 'agent-1', role: 'tester', agentRef: 'agent-1' }]);
       expect(result.display.title).toBe('Test Scenario');
       expect(result.display.expectedDecisionKinds).toEqual(['approve', 'decline']);
     });
@@ -304,13 +302,9 @@ describe('CompilerService', () => {
     });
 
     it('should propagate SCENARIO_NOT_FOUND', async () => {
-      mockIndex.getScenarioVersion.mockRejectedValue(
-        new AppException(ErrorCode.SCENARIO_NOT_FOUND, 'not found', 404)
-      );
+      mockIndex.getScenarioVersion.mockRejectedValue(new AppException(ErrorCode.SCENARIO_NOT_FOUND, 'not found', 404));
 
-      await expect(service.compile({ scenarioRef: 'fraud/unknown@1.0.0', inputs: {} })).rejects.toThrow(
-        AppException
-      );
+      await expect(service.compile({ scenarioRef: 'fraud/unknown@1.0.0', inputs: {} })).rejects.toThrow(AppException);
     });
   });
 
@@ -391,9 +385,7 @@ describe('CompilerService', () => {
         spec: {
           overrides: {
             launch: {
-              commitments: [
-                { id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }
-              ]
+              commitments: [{ id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }]
             }
           }
         }
@@ -435,9 +427,7 @@ describe('CompilerService', () => {
         inputs: { amount: 500, isVip: true }
       });
 
-      expect(result.executionRequest.session.commitments).toEqual([
-        { id: 'review-500', title: 'Review amount 500' }
-      ]);
+      expect(result.executionRequest.session.commitments).toEqual([{ id: 'review-500', title: 'Review amount 500' }]);
     });
   });
 

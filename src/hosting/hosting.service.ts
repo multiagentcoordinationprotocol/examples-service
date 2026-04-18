@@ -35,7 +35,10 @@ export class HostingService {
 
   private async materializeHostedAgents(
     compiled: CompileLaunchResult,
-    resolver: (definition: ExampleAgentDefinition, binding: CompileLaunchResult['participantBindings'][number]) => Promise<HostedExampleAgent>
+    resolver: (
+      definition: ExampleAgentDefinition,
+      binding: CompileLaunchResult['participantBindings'][number]
+    ) => Promise<HostedExampleAgent>
   ): Promise<HostedExampleAgent[]> {
     const hostedAgents: HostedExampleAgent[] = [];
 

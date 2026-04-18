@@ -52,9 +52,7 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
 
       // 1. Check for veto-blocking objections — critical severity only (RFC-MACP-0004)
       if (vetoEnabled) {
-        const blocking = all.filter(
-          (s) => s.messageType === 'Objection' && s.severity === 'critical'
-        );
+        const blocking = all.filter((s) => s.messageType === 'Objection' && s.severity === 'critical');
         if (blocking.length >= vetoThreshold) {
           return {
             action: 'decline',
@@ -73,11 +71,9 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
         (s) => s.messageType === 'Evaluation' && (s.confidence ?? 1.0) < minimumConfidence
       ).length;
 
-      const approvals = qualifiedEvaluations.filter(
-        (s) => (s.recommendation ?? '').toUpperCase() === 'APPROVE'
-      ).length;
-      const rejections = qualifiedEvaluations.filter(
-        (s) => ['BLOCK', 'REJECT'].includes((s.recommendation ?? '').toUpperCase())
+      const approvals = qualifiedEvaluations.filter((s) => (s.recommendation ?? '').toUpperCase() === 'APPROVE').length;
+      const rejections = qualifiedEvaluations.filter((s) =>
+        ['BLOCK', 'REJECT'].includes((s.recommendation ?? '').toUpperCase())
       ).length;
       const objections = all.filter((s) => s.messageType === 'Objection').length;
       const total = signals.size;
@@ -107,9 +103,19 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
           };
         }
         if (approvals === total) {
-          return { action: 'approve', vote: 'approve', reason: 'policy unanimous: all participants approved', policyApplied: 'unanimous' };
+          return {
+            action: 'approve',
+            vote: 'approve',
+            reason: 'policy unanimous: all participants approved',
+            policyApplied: 'unanimous'
+          };
         }
-        return { action: 'step_up', vote: 'approve', reason: 'policy unanimous: mixed signals, stepping up', policyApplied: 'unanimous' };
+        return {
+          action: 'step_up',
+          vote: 'approve',
+          reason: 'policy unanimous: mixed signals, stepping up',
+          policyApplied: 'unanimous'
+        };
       }
 
       const approvalRate = effectiveTotal > 0 ? approvals / effectiveTotal : 0;
@@ -124,7 +130,12 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
           };
         }
         if (rejections + objections > approvals) {
-          return { action: 'decline', vote: 'reject', reason: `policy ${type}: majority rejected or objected`, policyApplied: type };
+          return {
+            action: 'decline',
+            vote: 'reject',
+            reason: `policy ${type}: majority rejected or objected`,
+            policyApplied: type
+          };
         }
         return {
           action: 'step_up',
@@ -136,9 +147,19 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
 
       // 'none' — simple pass-through: any blocking signal triggers decline
       if (rejections > 0 || objections > 0) {
-        return { action: 'decline', vote: 'reject', reason: 'default policy: blocking signals observed', policyApplied: 'none' };
+        return {
+          action: 'decline',
+          vote: 'reject',
+          reason: 'default policy: blocking signals observed',
+          policyApplied: 'none'
+        };
       }
-      return { action: 'approve', vote: 'approve', reason: 'default policy: no blocking signals', policyApplied: 'none' };
+      return {
+        action: 'approve',
+        vote: 'approve',
+        reason: 'default policy: no blocking signals',
+        policyApplied: 'none'
+      };
     }
   };
 }

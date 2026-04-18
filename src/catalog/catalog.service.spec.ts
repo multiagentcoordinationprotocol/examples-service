@@ -6,7 +6,14 @@ function createMockSnapshot(): RegistrySnapshot {
   const scenario: ScenarioVersionFile = {
     apiVersion: 'scenarios.macp.dev/v1',
     kind: 'ScenarioVersion',
-    metadata: { pack: 'fraud', scenario: 'test-scenario', version: '1.0.0', name: 'Test Scenario', summary: 'A test', tags: ['tag1'] },
+    metadata: {
+      pack: 'fraud',
+      scenario: 'test-scenario',
+      version: '1.0.0',
+      name: 'Test Scenario',
+      summary: 'A test',
+      tags: ['tag1']
+    },
     spec: {
       inputs: { schema: {} },
       launch: { modeName: 'mode', modeVersion: '1.0.0', configurationVersion: '1.0.0', ttlMs: 60000, participants: [] }
@@ -22,7 +29,11 @@ function createMockSnapshot(): RegistrySnapshot {
 
   const packs = new Map<string, PackEntry>();
   packs.set('fraud', {
-    pack: { apiVersion: 'scenarios.macp.dev/v1', kind: 'ScenarioPack', metadata: { slug: 'fraud', name: 'Fraud', description: 'Fraud demos', tags: ['fraud'] } },
+    pack: {
+      apiVersion: 'scenarios.macp.dev/v1',
+      kind: 'ScenarioPack',
+      metadata: { slug: 'fraud', name: 'Fraud', description: 'Fraud demos', tags: ['fraud'] }
+    },
     scenarios: new Map([
       ['test-scenario', { versions: new Map([['1.0.0', { scenario, templates: new Map([['default', template]]) }]]) }]
     ])

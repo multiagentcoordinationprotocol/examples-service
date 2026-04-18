@@ -7,24 +7,20 @@ import { BootstrapPayload } from '../contracts/bootstrap.types';
 
 function buildBootstrap(): BootstrapPayload {
   return {
-    run: { runId: 'run-1', sessionId: 'sess-uuid-v4' },
-    participant: { participantId: 'test-agent', agentId: 'test-agent', displayName: 'Test', role: 'test' },
-    runtime: {
-      baseUrl: 'http://localhost:3001',
-      messageEndpoint: '/runs/run-1/messages',
-      eventsEndpoint: '/runs/run-1/events',
-      timeoutMs: 10000,
-      joinMetadata: { transport: 'http', messageFormat: 'macp' }
-    },
-    execution: {
-      scenarioRef: 'test/test@1.0.0',
-      modeName: 'test',
-      modeVersion: '1.0.0',
-      configurationVersion: 'config.default',
-      ttlMs: 300000
-    },
-    session: { context: {}, participants: [] },
-    agent: { manifest: {}, framework: 'langgraph' }
+    participant_id: 'test-agent',
+    session_id: 'sess-uuid-v4',
+    mode: 'test',
+    runtime_url: '',
+    participants: [],
+    mode_version: '1.0.0',
+    configuration_version: 'config.default',
+    metadata: {
+      run_id: 'run-1',
+      scenario_ref: 'test/test@1.0.0',
+      role: 'test',
+      framework: 'langgraph',
+      agent_ref: 'test-agent'
+    }
   };
 }
 

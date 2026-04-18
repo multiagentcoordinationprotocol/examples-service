@@ -40,9 +40,7 @@ function createMockSnapshot(): RegistrySnapshot {
       [
         'scenario',
         {
-          versions: new Map([
-            ['1.0.0', { scenario, templates: new Map([['default', template]]) }]
-          ])
+          versions: new Map([['1.0.0', { scenario, templates: new Map([['default', template]]) }]])
         }
       ]
     ])

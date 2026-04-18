@@ -1,29 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import * as path from 'path';
 import { AppModule } from '../../src/app.module';
 import { AppConfigService } from '../../src/config/app-config.service';
+import { buildE2eConfig } from './e2e-config';
 
 describe('Health (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const fixturesPacksDir = path.resolve(__dirname, '../fixtures/packs');
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule]
     })
       .overrideProvider(AppConfigService)
-      .useValue({
-        packsDir: fixturesPacksDir,
-        registryCacheTtlMs: 0,
-        corsOrigin: '*',
-        isDevelopment: false,
-        port: 0,
-        host: '0.0.0.0',
-        logLevel: 'error'
-      })
+      .useValue(buildE2eConfig({ isDevelopment: false }))
       .compile();
 
     app = moduleFixture.createNestApplication();

@@ -3,12 +3,7 @@ import { HttpStatus } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
-import {
-  PackEntry,
-  RegistrySnapshot,
-  ScenarioTemplateFile,
-  ScenarioVersionFile
-} from '../contracts/registry';
+import { PackEntry, RegistrySnapshot, ScenarioTemplateFile, ScenarioVersionFile } from '../contracts/registry';
 import { FileRegistryLoader } from './file-registry.loader';
 
 @Injectable()
@@ -36,15 +31,18 @@ export class RegistryIndexService {
       return this.loadingPromise;
     }
 
-    this.loadingPromise = this.loader.loadAll().then((snapshot) => {
-      this.cachedSnapshot = snapshot;
-      this.cachedAt = Date.now();
-      this.loadingPromise = null;
-      return snapshot;
-    }).catch((err) => {
-      this.loadingPromise = null;
-      throw err;
-    });
+    this.loadingPromise = this.loader
+      .loadAll()
+      .then((snapshot) => {
+        this.cachedSnapshot = snapshot;
+        this.cachedAt = Date.now();
+        this.loadingPromise = null;
+        return snapshot;
+      })
+      .catch((err) => {
+        this.loadingPromise = null;
+        throw err;
+      });
 
     return this.loadingPromise;
   }
@@ -58,11 +56,7 @@ export class RegistryIndexService {
     return pack;
   }
 
-  async getScenarioVersion(
-    packSlug: string,
-    scenarioSlug: string,
-    version: string
-  ): Promise<ScenarioVersionFile> {
+  async getScenarioVersion(packSlug: string, scenarioSlug: string, version: string): Promise<ScenarioVersionFile> {
     const pack = await this.getPack(packSlug);
     const scenario = pack.scenarios.get(scenarioSlug);
     if (!scenario) {

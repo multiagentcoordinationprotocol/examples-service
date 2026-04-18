@@ -1,10 +1,5 @@
 import { HostedExampleAgent, ParticipantAgentBinding, ExampleAgentSummary } from './example-agents';
-import {
-  CommitmentDefinition,
-  KickoffKind,
-  PayloadEnvelopeTemplate,
-  RuntimeSelectionTemplate
-} from './registry';
+import { CommitmentDefinition, KickoffKind, PayloadEnvelopeTemplate, RuntimeSelectionTemplate } from './registry';
 import { RunDescriptor } from './run-descriptor';
 
 export type { CommitmentDefinition };
@@ -121,6 +116,8 @@ export interface InitiatorPayload {
     configurationVersion: string;
     policyVersion?: string;
     context?: Record<string, unknown>;
+    contextId?: string;
+    extensions?: Record<string, unknown>;
     roots?: Array<{ uri: string; name?: string }>;
   };
   kickoff?: {
@@ -155,7 +152,6 @@ export interface CompileLaunchResult {
 
 export interface RunExampleRequest extends CompileLaunchRequest {
   bootstrapAgents?: boolean;
-  submitToControlPlane?: boolean;
   tags?: string[];
   requester?: { actorId?: string; actorType?: 'user' | 'service' | 'system' };
   runLabel?: string;
@@ -164,12 +160,5 @@ export interface RunExampleRequest extends CompileLaunchRequest {
 export interface RunExampleResult {
   compiled: CompileLaunchResult;
   hostedAgents: HostedExampleAgent[];
-  controlPlane?: {
-    baseUrl: string;
-    validated: boolean;
-    submitted: boolean;
-    runId?: string;
-    status?: string;
-    traceId?: string;
-  };
+  sessionId?: string;
 }

@@ -38,14 +38,6 @@ describe('Agents (integration)', () => {
         expect(validStrategies).toContain(agent.bootstrapStrategy);
         expect(validModes).toContain(agent.bootstrapMode);
         expect(Array.isArray(agent.scenarios)).toBe(true);
-        expect(agent.metrics).toEqual(
-          expect.objectContaining({
-            runs: expect.any(Number),
-            signals: expect.any(Number),
-            averageLatencyMs: expect.any(Number),
-            averageConfidence: expect.any(Number)
-          })
-        );
       }
     });
 
@@ -74,13 +66,10 @@ describe('Agents (integration)', () => {
       }
     });
 
-    it('agents have zero metrics', async () => {
+    it('agents have scenario coverage', async () => {
       const { body } = await ctx.client.requestRaw('GET', '/agents');
       for (const agent of body as any[]) {
-        expect(agent.metrics.runs).toBe(0);
-        expect(agent.metrics.signals).toBe(0);
-        expect(agent.metrics.averageLatencyMs).toBe(0);
-        expect(agent.metrics.averageConfidence).toBe(0);
+        expect(agent.scenarios.length).toBeGreaterThanOrEqual(1);
       }
     });
   });
@@ -127,7 +116,7 @@ describe('Agents (integration)', () => {
   describe('POST /examples/run with tags and runLabel', () => {
     it('merges user-provided tags into execution request', async () => {
       const result = (await ctx.client.runExample({
-        ...fraudScenarioRunRequest({ submitToControlPlane: false }),
+        ...fraudScenarioRunRequest(),
         tags: ['ui-launch', 'experiment-42'],
         runLabel: 'My test run'
       })) as any;
@@ -143,7 +132,7 @@ describe('Agents (integration)', () => {
 
     it('overrides requester when provided', async () => {
       const result = (await ctx.client.runExample({
-        ...fraudScenarioRunRequest({ submitToControlPlane: false }),
+        ...fraudScenarioRunRequest(),
         requester: { actorId: 'user@example.com', actorType: 'user' }
       })) as any;
 
