@@ -11,15 +11,19 @@ POST /examples/run
   → CompilerService.compile()              [framework-agnostic]
   → applyRequestOverrides(tags/requester)  [merge UI-provided fields]
   → HostingService.resolve()               [materializes agent metadata]
-  → ControlPlaneClient.validate()          [standard MACP contract]
-  → ControlPlaneClient.createRun()         [standard MACP contract]
   → HostingService.attach()                [launches framework workers]
     → ProcessExampleAgentHostProvider
       → HostAdapterRegistry.get(framework)
       → ManifestValidator.validate(manifest)
       → AgentHostAdapter.prepareLaunch()
-      → LaunchSupervisor.launch()
+      → LaunchSupervisor.writeBootstrapFile(BootstrapPayload) → /tmp/*.json
+      → LaunchSupervisor.launch()          [spawns process with MACP_BOOTSTRAP_FILE env]
 ```
+
+With direct-agent-auth (RFC-MACP-0004 §4), the examples-service is no longer
+in the envelope path. Each spawned agent opens its own authenticated gRPC
+channel to the runtime using `bootstrap.auth_token`; the control-plane stays
+in observer-only mode (read-only projection + SSE).
 
 ## Key Boundaries
 
@@ -39,27 +43,52 @@ interface AgentHostAdapter {
 }
 ```
 
-### Control plane remains the only message ingress/egress
+### Runtime is the only message ingress/egress
 
-Workers communicate exclusively through the control plane HTTP API:
-- `POST /runs/:id/messages` — send MACP messages
-- `GET /runs/:id/events` — poll for run events
-- `GET /runs/:id` — check run status
+Workers communicate exclusively with the MACP runtime over authenticated
+gRPC — the control-plane never writes on an agent's behalf.
+- Subscribe to the session via the runtime's bidirectional stream.
+- Emit `Proposal` / `Evaluation` / `Vote` / `Commitment` / `Objection` / etc.
+  through the SDK mode-helpers (`DecisionSession.vote()`, `.commit()`, …).
+- Receive history replay + live envelopes on stream open (RFC-MACP-0006 §3.2 passive subscribe),
+  so agent spawn order is irrelevant.
 
 ### Bootstrap contract
 
-Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BOOTSTRAP_FILE`):
+Every worker receives a flat `BootstrapPayload` via a temp JSON file
+(`MACP_BOOTSTRAP_FILE`). Shape matches what both `macp_sdk` (Python) and
+`macp-sdk-typescript` expect in their `fromBootstrap()` functions:
 
 ```json
 {
-  "run": { "runId": "...", "traceId": "..." },
-  "participant": { "participantId": "...", "role": "..." },
-  "runtime": { "baseUrl": "...", "messageEndpoint": "...", "eventsEndpoint": "..." },
-  "execution": { "scenarioRef": "...", "ttlMs": 300000, ... },
-  "session": { "context": { ... }, "participants": [ ... ] },
-  "agent": { "manifest": { ... }, "framework": "langgraph", "frameworkConfig": { ... } }
+  "participant_id": "risk-agent",
+  "session_id": "7f3d....-....",
+  "mode": "macp.mode.decision.v1",
+  "runtime_url": "runtime.local:50051",
+  "auth_token": "per-agent bearer",
+  "secure": true,
+  "allow_insecure": false,
+  "participants": ["fraud-agent", "growth-agent", "compliance-agent", "risk-agent"],
+  "mode_version": "1.0.0",
+  "configuration_version": "config.default",
+  "policy_version": "policy.fraud.majority-veto",
+  "initiator": { "session_start": { ... }, "kickoff": { ... } },
+  "cancel_callback": { "host": "127.0.0.1", "port": 9123, "path": "/agent/cancel" },
+  "metadata": {
+    "run_id": "run-abc",
+    "trace_id": "trace-xyz",
+    "scenario_ref": "fraud/high-value-new-device@1.0.0",
+    "role": "coordinator",
+    "framework": "custom",
+    "agent_ref": "risk-agent",
+    "policy_hints": { "type": "majority", "vetoEnabled": true, "vetoThreshold": 1 },
+    "session_context": { "transactionAmount": 3200 }
+  }
 }
 ```
+
+`initiator` is present on exactly one bootstrap per run — the initiator agent
+emits `SessionStart` + the first mode-specific envelope (e.g. `Proposal`).
 
 ## Component Map
 
@@ -78,9 +107,9 @@ Every worker receives a stable `BootstrapPayload` via a temp JSON file (`MACP_BO
 | Hosting Service | `src/hosting/hosting.service.ts` | Two-phase resolve + attach orchestration |
 | Agent Profile Service | `src/catalog/agent-profile.service.ts` | Builds agent profiles with registry-scanned scenario coverage |
 | Agent Catalog | `src/example-agents/example-agent-catalog.service.ts` | Hard-coded agent definitions (4 agents) |
-| Python Worker SDK | `agents/sdk/python/macp_worker_sdk/` | Shared Python worker SDK: bootstrap loader, read-only control-plane client (get_run/get_events), Participant abstraction + PolicyStrategy. Emission delegates to `macp_sdk.DecisionSession` over direct gRPC. |
-| Node Worker Runtime | `src/example-agents/runtime/` | In-tree TS modules for the custom (Node) Risk Agent: bootstrap loader, cancel-callback server, policy strategy, read-only CP observability client. Emission uses `macp-sdk-typescript` directly. |
-| Policy Strategy | `src/example-agents/runtime/policy-strategy.ts` | Policy-aware decision logic for the coordinator (quorum, voting, veto) |
+| Python Agent SDK | upstream `macp_sdk` (PyPI) | Python workers call `macp_sdk.agent.from_bootstrap()` directly — no local worker SDK in this repo. Handlers receive the same `ctx.actions` surface (`evaluate`, `vote`, `commit`, etc.) as the TS SDK. |
+| Node Worker Runtime | `src/example-agents/runtime/` | In-tree TS modules for the custom (Node) Risk Agent: `bootstrap-loader.ts`, `cancel-callback-server.ts` (RFC-0001 §7.2 Option A), `policy-strategy.ts`, and `risk-decider.worker.ts`. Runtime IO uses `macp-sdk-typescript` directly. |
+| Policy Strategy | `src/example-agents/runtime/policy-strategy.ts` | Policy-aware decision logic for the coordinator (quorum, voting, veto, confidence filtering, designated-role commitment authority) |
 
 ## Framework Workers
 
@@ -95,14 +124,24 @@ Each worker gracefully falls back when its framework library is not installed, p
 
 ## SDK Participant Abstraction
 
-Python workers use the **Participant** SDK abstraction (`macp_worker_sdk.Participant`), which provides:
-- **Handler registration** — `@participant.on('Proposal')`
-- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.object()`, `ctx.actions.vote()`, `ctx.actions.commit()`.
-  Under the hood, `Actions` holds a `macp_sdk.DecisionSession` and delegates to its mode-helpers; envelopes travel over the agent's own gRPC channel (RFC-MACP-0004 §4).
-- **Poll-based event loop** — `participant.run()` polls the control-plane (read-only) for canonical events, dispatches to handlers, and enforces deadlines.
-- **Event-to-handler dispatch** — `proposal.created` → `'Proposal'`, `proposal.updated` → handler key from `messageType`.
+All workers — Python and Node — share the same conceptual `Participant`
+surface, provided by the respective upstream SDK:
 
-The Node risk-agent does not use Participant; it constructs `MacpClient` + `DecisionSession` directly in `src/example-agents/runtime/risk-decider.worker.ts` for tighter control over quorum timing.
+| Language | Entry point | Source |
+|----------|-------------|--------|
+| Python   | `macp_sdk.agent.from_bootstrap()` | PyPI `macp-sdk` |
+| Node     | `agent.fromBootstrap()` from `macp-sdk-typescript` | GH packages `macp-sdk-typescript` |
+
+Both implementations give the worker:
+- **Handler registration** — `participant.on('Proposal', handler)`,
+  `participant.on('Evaluation', handler)`, etc.
+- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.objection()`,
+  `ctx.actions.vote()`, `ctx.actions.commit()`. Envelopes travel over the
+  agent's own authenticated gRPC channel (RFC-MACP-0004 §4).
+- **gRPC-driven event loop** — `participant.run()` subscribes to the runtime's
+  session stream and dispatches to registered handlers.
+- **Terminal notification** — `participant.onTerminal()` fires when the
+  session reaches a terminal state (committed / cancelled / deadline).
 
 The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicyStrategy(policyHints)`) for policy-driven:
 - **Quorum**: `unanimous` waits for all; `majority`/`supermajority` needs threshold; `none` needs ≥1 response

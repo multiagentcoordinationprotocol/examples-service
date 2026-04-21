@@ -94,4 +94,39 @@ describe('HostingService', () => {
     expect(hosted.every((agent) => agent.status === 'bootstrapped')).toBe(true);
     expect(compiled.executionRequest.session.participants[3].metadata?.attachedRunId).toBe('run-1');
   });
+
+  // RFC-MACP-0004 §4: the examples-service pre-allocates a single sessionId and
+  // threads it into every AgentBootstrap. If attach() regressed to minting a
+  // per-participant sessionId (for example by calling randomUUID() inside the
+  // loop), agents would each join a different session. This test pins down the
+  // invariant by recording the sessionId seen by each participant's bootstrap.
+  it('passes the same sessionId to every participant bootstrap in a multi-agent attach', async () => {
+    const recordingProvider = new InMemoryExampleAgentHostProvider();
+    const seenSessionIds: string[] = [];
+    const originalAttach = recordingProvider.attach!.bind(recordingProvider);
+    recordingProvider.attach = async (definition, binding, ctx) => {
+      seenSessionIds.push(ctx.sessionId ?? '(undefined)');
+      return originalAttach(definition, binding, ctx);
+    };
+
+    const recordingService = new HostingService(new ExampleAgentCatalogService(), recordingProvider);
+    const compiled = buildCompiled();
+    const context: ExampleAgentRunContext = {
+      runId: sessionId,
+      sessionId,
+      scenarioRef: compiled.display.scenarioRef,
+      modeName: 'macp.mode.decision.v1',
+      modeVersion: '1.0.0',
+      configurationVersion: 'config.default',
+      ttlMs: 300000,
+      participants: compiled.executionRequest.session.participants.map((p) => p.id),
+      initiatorParticipantId: 'risk-agent'
+    };
+
+    await recordingService.attach(compiled, context);
+
+    expect(seenSessionIds).toHaveLength(4);
+    expect(new Set(seenSessionIds).size).toBe(1);
+    expect(seenSessionIds[0]).toBe(sessionId);
+  });
 });

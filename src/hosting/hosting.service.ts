@@ -22,6 +22,9 @@ export class HostingService {
   }
 
   async attach(compiled: CompileLaunchResult, context: ExampleAgentRunContext): Promise<HostedExampleAgent[]> {
+    // RFC-MACP-0006 §3.2: With passive subscribe + history replay in the runtime,
+    // spawn order is irrelevant. Agents subscribe to the session on stream open
+    // and receive all accepted envelopes (including ones sent before they connected).
     const hostedAgents = await this.materializeHostedAgents(compiled, async (definition, binding) => {
       if (!this.hostProvider.attach) {
         return this.hostProvider.resolve(definition, binding);
