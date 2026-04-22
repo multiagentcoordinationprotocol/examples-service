@@ -28,25 +28,38 @@ function readStringList(name: string): string[] {
     .filter(Boolean);
 }
 
-function readStringMap(name: string): Record<string, string> {
+/**
+ * Partial MACP scopes map. Matches the fields accepted by the auth-service
+ * `/tokens` body (`scopes`) and emitted as the JWT `macp_scopes` claim. See
+ * `runtime/src/auth/resolvers/jwt_bearer.rs:15-27`.
+ */
+export interface MacpScopes {
+  can_start_sessions?: boolean;
+  can_manage_mode_registry?: boolean;
+  is_observer?: boolean;
+  allowed_modes?: string[];
+  max_open_sessions?: number;
+}
+
+function readScopesMap(name: string): Record<string, MacpScopes> {
   const raw = process.env[name];
   if (!raw) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw configError(`${name} must be valid JSON (object of string→string)`);
+    throw configError(`${name} must be valid JSON (object of sender→scopes)`);
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw configError(`${name} must be a JSON object of string→string`);
+    throw configError(`${name} must be a JSON object keyed by sender`);
   }
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value !== 'string' || value.trim() === '') {
-      throw configError(`${name}[${key}] must be a non-empty string`);
+  const result: Record<string, MacpScopes> = {};
+  for (const [sender, scopes] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!sender.trim()) continue;
+    if (!scopes || typeof scopes !== 'object' || Array.isArray(scopes)) {
+      throw configError(`${name}[${sender}] must be a JSON object of scope fields`);
     }
-    if (key.trim() === '') continue;
-    result[key] = value;
+    result[sender] = scopes as MacpScopes;
   }
   return result;
 }
@@ -78,22 +91,9 @@ export class AppConfigService implements OnModuleInit {
   readonly exampleAgentNodePath = process.env.EXAMPLE_AGENT_NODE_PATH ?? process.execPath;
 
   /**
-   * Per-agent Bearer tokens for direct-to-runtime authentication
-   * (RFC-MACP-0004 §4). Map: sender (participantId or agentRef) → Bearer token.
-   *
-   * Populated from `EXAMPLES_SERVICE_AGENT_TOKENS_JSON`, a JSON object such as:
-   *   {"risk-agent":"tok-risk","fraud-agent":"tok-fraud",...}
-   *
-   * When empty (default), agents fall back to the legacy HTTP-via-control-plane
-   * path. When populated, the bootstrap writes the token into `runtime.bearerToken`
-   * so the agent opens its own gRPC channel to the runtime.
-   */
-  readonly agentRuntimeTokens: Record<string, string> = readStringMap('EXAMPLES_SERVICE_AGENT_TOKENS_JSON');
-
-  /**
-   * gRPC endpoint that spawned agents connect to directly. Only used when the
-   * bootstrap populates `runtime.address`; otherwise agents stay on the legacy
-   * HTTP bridge through the control-plane.
+   * gRPC endpoint that spawned agents connect to directly. Required —
+   * bootstrap writes this into `runtime.address` so agents open their own
+   * gRPC channel to the runtime (RFC-MACP-0004 §4).
    */
   readonly runtimeAddress = process.env.MACP_RUNTIME_ADDRESS ?? '';
   readonly runtimeTls = readBoolean('MACP_RUNTIME_TLS', true);
@@ -114,27 +114,48 @@ export class AppConfigService implements OnModuleInit {
   readonly cancelCallbackPortBase = readNumber('MACP_CANCEL_CALLBACK_PORT_BASE', 0);
   readonly cancelCallbackPath = process.env.MACP_CANCEL_CALLBACK_PATH ?? '/agent/cancel';
 
-  resolveAgentToken(senderOrAgentRef: string | undefined): string | undefined {
-    if (!senderOrAgentRef) return undefined;
-    return this.agentRuntimeTokens[senderOrAgentRef];
-  }
+  /**
+   * Auth-service base URL. Required — every agent spawn mints a JWT via
+   * `POST /tokens` (RFC-MACP-0004 §5). See plans/auth-2-jwt-integration.md.
+   */
+  readonly authServiceUrl: string = process.env.MACP_AUTH_SERVICE_URL ?? '';
+  readonly authServiceTimeoutMs: number = readNumber('MACP_AUTH_SERVICE_TIMEOUT_MS', 5000);
+  /**
+   * TTL in seconds requested from the auth-service for every mint. Must exceed
+   * the agent process's gRPC stream lifetime — the SDKs bind auth once at
+   * stream open and cannot refresh. auth-service caps at `MACP_AUTH_MAX_TTL_SECONDS`
+   * (default 3600s), so to go longer operators must also raise that cap.
+   */
+  readonly authTokenTtlSeconds: number = readNumber('MACP_AUTH_TOKEN_TTL_SECONDS', 3600);
+  /**
+   * Optional per-sender scope overrides; deep-merged onto the role defaults
+   * computed by the provider. Explicit keys in the override replace the
+   * computed defaults (see `AuthTokenMinterService.mergeScopes`).
+   */
+  readonly authScopeOverrides: Record<string, MacpScopes> = readScopesMap('MACP_AUTH_SCOPES_JSON');
 
   onModuleInit(): void {
     this.logger.log(`packs directory: ${this.packsDir}`);
     this.logger.log(`cache TTL: ${this.registryCacheTtlMs}ms`);
     this.logger.log(`control plane: ${this.controlPlaneBaseUrl}`);
-    const agentCount = Object.keys(this.agentRuntimeTokens).length;
-    if (agentCount > 0) {
-      this.logger.log(
-        `direct-agent-auth: ${agentCount} agent token(s) configured; runtime=${this.runtimeAddress || '(unset)'}`
-      );
-    }
+    this.logger.log(`runtime: ${this.runtimeAddress || '(unset)'}`);
     if (!this.runtimeTls && !this.runtimeAllowInsecure) {
       this.logger.warn(
         'MACP_RUNTIME_TLS=false without MACP_RUNTIME_ALLOW_INSECURE=true: agents will refuse to open the channel (RFC-MACP-0006 §3).'
       );
     }
+    this.validateAuthConfig();
+    this.logger.log(`auth: jwt (auth-service=${this.authServiceUrl})`);
+  }
+
+  private validateAuthConfig(): void {
+    if (!this.authServiceUrl) {
+      throw configError('MACP_AUTH_SERVICE_URL is required (points at the auth-service base URL)');
+    }
+    if (this.authTokenTtlSeconds <= 0) {
+      throw configError('MACP_AUTH_TOKEN_TTL_SECONDS must be a positive integer');
+    }
   }
 }
 
-export { readBoolean, readNumber, readStringList, readStringMap };
+export { readBoolean, readNumber, readStringList, readScopesMap };

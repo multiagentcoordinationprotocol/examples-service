@@ -121,12 +121,12 @@ describe('Agents (integration)', () => {
         runLabel: 'My test run'
       })) as any;
 
-      const execution = result.compiled.executionRequest.execution;
+      const execution = result.compiled.runDescriptor.execution;
       expect(execution.tags).toContain('ui-launch');
       expect(execution.tags).toContain('experiment-42');
       expect(execution.tags).toContain('example');
 
-      const metadata = result.compiled.executionRequest.session.metadata;
+      const metadata = result.compiled.runDescriptor.session.metadata;
       expect(metadata.runLabel).toBe('My test run');
     });
 
@@ -136,7 +136,7 @@ describe('Agents (integration)', () => {
         requester: { actorId: 'user@example.com', actorType: 'user' }
       })) as any;
 
-      const requester = result.compiled.executionRequest.execution.requester;
+      const requester = result.compiled.runDescriptor.execution.requester;
       expect(requester.actorId).toBe('user@example.com');
       expect(requester.actorType).toBe('user');
     });

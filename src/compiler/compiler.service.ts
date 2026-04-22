@@ -2,15 +2,10 @@ import { Injectable, HttpStatus } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import Ajv from 'ajv';
 import { createScenarioAjv } from './ajv-factory';
-import { CompileLaunchRequest, CompileLaunchResult, InitiatorPayload, PayloadEnvelope } from '../contracts/launch';
+import { CompileLaunchRequest, CompileLaunchResult, InitiatorPayload } from '../contracts/launch';
 import { RunDescriptor } from '../contracts/run-descriptor';
 import { ParticipantAgentBinding } from '../contracts/example-agents';
-import {
-  CommitmentDefinition,
-  ScenarioVersionFile,
-  ScenarioTemplateFile,
-  KickoffTemplate
-} from '../contracts/registry';
+import { ScenarioVersionFile, ScenarioTemplateFile, KickoffTemplate } from '../contracts/registry';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 import { RegistryIndexService } from '../registry/registry-index.service';
@@ -29,19 +24,6 @@ function inferMessageType(kickoff: KickoffTemplate): string {
     default:
       return 'Signal';
   }
-}
-
-function envelopeFromKickoff(kickoff: KickoffTemplate): PayloadEnvelope | undefined {
-  if (kickoff.payloadEnvelope) {
-    return kickoff.payloadEnvelope as PayloadEnvelope;
-  }
-  if (kickoff.payload) {
-    return {
-      encoding: 'json',
-      json: kickoff.payload
-    };
-  }
-  return undefined;
 }
 
 @Injectable()
@@ -89,10 +71,6 @@ export class CompilerService {
 
     const kickoffTemplate = launch.kickoffTemplate
       ? (substitute(launch.kickoffTemplate, substitutionVars) as KickoffTemplate[])
-      : undefined;
-
-    const commitments = launch.commitments
-      ? (substitute(launch.commitments, substitutionVars) as CommitmentDefinition[])
       : undefined;
 
     const participantBindings: ParticipantAgentBinding[] = launch.participants.map((participant) => ({
@@ -158,7 +136,8 @@ export class CompilerService {
           sourceRef: request.scenarioRef,
           scenarioRef: request.scenarioRef,
           templateId: request.templateId ?? 'default',
-          environment: process.env.NODE_ENV ?? 'development'
+          environment: process.env.NODE_ENV ?? 'development',
+          ...metadataFromTemplate
         }
       },
       execution: {
@@ -173,60 +152,13 @@ export class CompilerService {
 
     return {
       sessionId,
+      mode: request.mode ?? 'sandbox',
       initiator,
       runDescriptor,
-      executionRequest: {
-        mode: request.mode ?? 'sandbox',
-        runtime,
-        session: {
-          modeName: launch.modeName,
-          modeVersion: launch.modeVersion,
-          configurationVersion: launch.configurationVersion,
-          policyVersion: launch.policyVersion,
-          policyHints: launch.policyHints,
-          ttlMs: launch.ttlMs,
-          initiatorParticipantId,
-          participants: launch.participants.map((participant) => ({
-            id: participant.id,
-            role: participant.role,
-            transportIdentity: participant.transportIdentity,
-            metadata: {
-              ...(participant.metadata ?? {}),
-              agentRef: participant.agentRef,
-              displayName: participant.displayName,
-              description: participant.description
-            }
-          })),
-          commitments,
-          context,
-          metadata: {
-            source: 'example-service',
-            sourceRef: request.scenarioRef,
-            scenarioRef: request.scenarioRef,
-            templateId: request.templateId ?? 'default',
-            template: request.templateId ?? 'default',
-            environment: process.env.NODE_ENV ?? 'development',
-            sessionId,
-            ...metadataFromTemplate
-          }
-        },
-        kickoff: kickoffTemplate?.map((kickoff) => ({
-          from: kickoff.from,
-          to: kickoff.to,
-          kind: kickoff.kind,
-          messageType: inferMessageType(kickoff),
-          payload: kickoff.payload,
-          payloadEnvelope: envelopeFromKickoff(kickoff),
-          metadata: kickoff.metadata
-        })),
-        execution: {
-          idempotencyKey: execution.idempotencyKey,
-          tags,
-          requester: {
-            actorId: execution.requester?.actorId ?? 'example-service',
-            actorType: execution.requester?.actorType ?? 'service'
-          }
-        }
+      scenarioMeta: {
+        policyHints: launch.policyHints,
+        sessionContext: context,
+        initiatorParticipantId
       },
       display: {
         title: scenario.metadata.name,

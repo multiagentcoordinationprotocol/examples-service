@@ -12,58 +12,53 @@ describe('ExampleRunService', () => {
   let config: AppConfigService;
 
   const sessionId = '00000000-0000-4000-8000-000000000001';
-  const compiled: CompileLaunchResult = {
-    sessionId,
-    runDescriptor: {
+
+  function buildCompiled(): CompileLaunchResult {
+    return {
+      sessionId,
       mode: 'sandbox',
-      runtime: { kind: 'rust' },
-      session: {
-        sessionId,
-        modeName: 'macp.mode.decision.v1',
-        modeVersion: '1.0.0',
-        configurationVersion: 'config.default',
-        policyVersion: 'policy.default',
-        ttlMs: 300000,
-        participants: [{ id: 'risk-agent' }]
-      }
-    },
-    initiator: {
-      participantId: 'risk-agent',
-      sessionStart: {
-        intent: 'fraud/high-value-new-device',
-        participants: ['risk-agent'],
-        ttlMs: 300000,
-        modeVersion: '1.0.0',
-        configurationVersion: 'config.default',
-        policyVersion: 'policy.default'
-      }
-    },
-    executionRequest: {
-      mode: 'sandbox',
-      runtime: { kind: 'rust', version: 'v1' },
-      session: {
-        modeName: 'macp.mode.decision.v1',
-        modeVersion: '1.0.0',
-        configurationVersion: 'config.default',
-        policyVersion: 'policy.default',
+      runDescriptor: {
+        mode: 'sandbox',
+        runtime: { kind: 'rust' },
+        session: {
+          sessionId,
+          modeName: 'macp.mode.decision.v1',
+          modeVersion: '1.0.0',
+          configurationVersion: 'config.default',
+          policyVersion: 'policy.default',
+          ttlMs: 300000,
+          participants: [{ id: 'risk-agent' }]
+        }
+      },
+      initiator: {
+        participantId: 'risk-agent',
+        sessionStart: {
+          intent: 'fraud/high-value-new-device',
+          participants: ['risk-agent'],
+          ttlMs: 300000,
+          modeVersion: '1.0.0',
+          configurationVersion: 'config.default',
+          policyVersion: 'policy.default'
+        }
+      },
+      scenarioMeta: {
+        initiatorParticipantId: 'risk-agent',
         policyHints: {
           type: 'none',
           description: 'No governance constraints',
           vetoThreshold: 1,
           minimumConfidence: 0.0,
           designatedRoles: []
-        },
-        ttlMs: 300000,
-        initiatorParticipantId: 'risk-agent',
-        participants: [{ id: 'risk-agent', role: 'risk' }]
-      }
-    },
-    display: {
-      title: 'Fraud',
-      scenarioRef: 'fraud/high-value-new-device@1.0.0'
-    },
-    participantBindings: [{ participantId: 'risk-agent', role: 'risk', agentRef: 'risk-agent' }]
-  };
+        }
+      },
+      display: {
+        title: 'Fraud',
+        scenarioRef: 'fraud/high-value-new-device@1.0.0'
+      },
+      participantBindings: [{ participantId: 'risk-agent', role: 'risk', agentRef: 'risk-agent' }]
+    };
+  }
+  const compiled = buildCompiled();
 
   const resolvedAgents: HostedExampleAgent[] = [
     {
@@ -89,7 +84,9 @@ describe('ExampleRunService', () => {
   ];
 
   beforeEach(() => {
-    compiler = { compile: jest.fn().mockResolvedValue(compiled) } as unknown as jest.Mocked<CompilerService>;
+    // Each test gets a fresh clone so applyRequestOverrides mutations don't
+    // bleed across cases.
+    compiler = { compile: jest.fn().mockImplementation(async () => buildCompiled()) } as unknown as jest.Mocked<CompilerService>;
     hosting = {
       resolve: jest.fn().mockResolvedValue(resolvedAgents),
       attach: jest.fn().mockResolvedValue(attachedAgents)
@@ -107,9 +104,9 @@ describe('ExampleRunService', () => {
       inputs: {}
     });
 
-    expect(hosting.resolve).toHaveBeenCalledWith(compiled);
+    expect(hosting.resolve).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
     expect(hosting.attach).toHaveBeenCalledWith(
-      compiled,
+      expect.objectContaining({ sessionId }),
       expect.objectContaining({
         runId: sessionId,
         sessionId,
@@ -159,7 +156,7 @@ describe('ExampleRunService', () => {
         tags: ['extra-tag', 'owner:qa']
       });
 
-      const executionTags = result.compiled.executionRequest.execution?.tags ?? [];
+      const executionTags = result.compiled.runDescriptor.execution?.tags ?? [];
       expect(executionTags).toEqual(expect.arrayContaining(['extra-tag', 'owner:qa']));
     });
 
@@ -170,7 +167,7 @@ describe('ExampleRunService', () => {
         requester: { actorId: 'qa-bot', actorType: 'service' }
       });
 
-      expect(result.compiled.executionRequest.execution?.requester).toEqual({
+      expect(result.compiled.runDescriptor.execution?.requester).toEqual({
         actorId: 'qa-bot',
         actorType: 'service'
       });
@@ -183,7 +180,7 @@ describe('ExampleRunService', () => {
         runLabel: 'nightly-2026-04-15'
       });
 
-      expect(result.compiled.executionRequest.session.metadata?.runLabel).toBe('nightly-2026-04-15');
+      expect(result.compiled.runDescriptor.session.metadata?.runLabel).toBe('nightly-2026-04-15');
     });
   });
 });

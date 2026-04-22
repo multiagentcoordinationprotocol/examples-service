@@ -23,7 +23,7 @@ describe('Example Run - Dry Run (integration)', () => {
       )) as any;
 
       expect(result.compiled).toBeDefined();
-      expect(result.compiled.executionRequest).toBeDefined();
+      expect(result.compiled.runDescriptor).toBeDefined();
       expect(result.hostedAgents).toHaveLength(0);
       expect(result.sessionId).toBeUndefined();
     });
@@ -59,7 +59,7 @@ describe('Example Run - Dry Run (integration)', () => {
       const result = (await ctx.client.runExample(lendingScenarioRunRequest())) as any;
 
       expect(result.hostedAgents).toHaveLength(4);
-      expect(result.compiled.executionRequest.session.context.loanAmount).toBe(25000);
+      expect(result.compiled.scenarioMeta.sessionContext.loanAmount).toBe(25000);
       expect(result.sessionId).toBeDefined();
     });
 
@@ -67,7 +67,7 @@ describe('Example Run - Dry Run (integration)', () => {
       const result = (await ctx.client.runExample(claimsScenarioRunRequest())) as any;
 
       expect(result.hostedAgents).toHaveLength(4);
-      expect(result.compiled.executionRequest.session.context.claimAmount).toBe(8500);
+      expect(result.compiled.scenarioMeta.sessionContext.claimAmount).toBe(8500);
       expect(result.sessionId).toBeDefined();
     });
   });

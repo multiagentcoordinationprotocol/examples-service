@@ -14,3 +14,27 @@ services:
       CONTROL_PLANE_BASE_URL: 'http://host.docker.internal:3001'
       AUTO_BOOTSTRAP_EXAMPLE_AGENTS: 'true'
       EXAMPLE_AGENT_PYTHON_PATH: python3
+      # AUTH-2: every spawn mints a JWT via the auth-service sidecar below.
+      # See plans/auth-2-jwt-integration.md.
+      MACP_AUTH_SERVICE_URL: 'http://auth-service:3200'
+      MACP_AUTH_TOKEN_TTL_SECONDS: '3600'
+    depends_on:
+      - auth-service
+
+  # Minimal dev auth-service (AUTH-2). Mints RS256 JWTs at POST /tokens and
+  # publishes a JWKS at /.well-known/jwks.json. Uses an ephemeral key by
+  # default — set MACP_AUTH_SIGNING_KEY_JSON to pin one across restarts.
+  auth-service:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ../auth-service:/app
+    command: sh -c "npm install --no-fund --no-audit && npm run build && npm start"
+    ports:
+      - '3200:3200'
+    environment:
+      PORT: '3200'
+      MACP_AUTH_ISSUER: macp-auth-service
+      MACP_AUTH_AUDIENCE: macp-runtime
+      MACP_AUTH_DEFAULT_TTL_SECONDS: '900'
+      MACP_AUTH_MAX_TTL_SECONDS: '3600'

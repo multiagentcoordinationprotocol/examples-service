@@ -35,6 +35,7 @@ function buildBootstrap(): BootstrapPayload {
     session_id: 'sess-uuid-v4',
     mode: 'macp.mode.decision.v1',
     runtime_url: '',
+    auth_token: 'jwt-test',
     participants: ['fraud-agent', 'risk-agent'],
     mode_version: '1.0.0',
     configuration_version: 'config.default',

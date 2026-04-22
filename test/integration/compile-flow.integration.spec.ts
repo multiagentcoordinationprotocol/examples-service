@@ -17,20 +17,19 @@ describe('Compile Flow (integration)', () => {
   });
 
   describe('POST /launch/compile - fraud scenario', () => {
-    it('compiles valid inputs into an ExecutionRequest', async () => {
+    it('compiles valid inputs into a RunDescriptor + initiator', async () => {
       const result = await ctx.client.compile(fraudScenarioCompileRequest());
+      const body = result as any;
 
-      expect(result.executionRequest).toBeDefined();
-      const er = result.executionRequest as any;
-      expect(er.mode).toBe('sandbox');
-      expect(er.runtime).toEqual({ kind: 'rust', version: 'v1' });
-      expect(er.session.modeName).toBe('macp.mode.decision.v1');
-      expect(er.session.participants).toHaveLength(4);
-      expect(er.session.context.transactionAmount).toBe(3200);
-      expect(er.session.context.isVipCustomer).toBe(true);
-      expect(er.session.metadata.source).toBe('example-service');
-      expect(er.kickoff).toHaveLength(1);
-      expect(er.kickoff[0].messageType).toBe('Proposal');
+      expect(body.runDescriptor).toBeDefined();
+      expect(body.mode).toBe('sandbox');
+      expect(body.runDescriptor.runtime).toEqual({ kind: 'rust', version: 'v1' });
+      expect(body.runDescriptor.session.modeName).toBe('macp.mode.decision.v1');
+      expect(body.runDescriptor.session.participants).toHaveLength(4);
+      expect(body.scenarioMeta.sessionContext.transactionAmount).toBe(3200);
+      expect(body.scenarioMeta.sessionContext.isVipCustomer).toBe(true);
+      expect(body.runDescriptor.session.metadata.source).toBe('example-service');
+      expect(body.initiator.kickoff.messageType).toBe('Proposal');
     });
 
     it('returns participant bindings', async () => {
@@ -53,32 +52,8 @@ describe('Compile Flow (integration)', () => {
     });
 
     it('applies strict-risk template overrides', async () => {
-      const result = await ctx.client.compile(
-        fraudScenarioCompileRequest({ templateId: 'strict-risk' })
-      );
-      const er = (result as any).executionRequest;
-      expect(er.session.ttlMs).toBe(180000);
-    });
-
-    it('propagates scenario commitments onto session.commitments', async () => {
-      const result = await ctx.client.compile(fraudScenarioCompileRequest());
-      const er = (result as any).executionRequest;
-
-      expect(er.session.commitments).toEqual([
-        {
-          id: 'fraud-risk-assessed',
-          title: 'Fraud risk assessed',
-          description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
-          requiredRoles: ['fraud'],
-          policyRef: 'policy.default'
-        },
-        {
-          id: 'decision-finalized',
-          title: 'Decision finalized',
-          description: 'Risk coordinator has reconciled inputs and committed a final decision.',
-          requiredRoles: ['risk']
-        }
-      ]);
+      const result = await ctx.client.compile(fraudScenarioCompileRequest({ templateId: 'strict-risk' }));
+      expect((result as any).runDescriptor.session.ttlMs).toBe(180000);
     });
   });
 
@@ -117,36 +92,22 @@ describe('Compile Flow (integration)', () => {
   });
 
   describe('POST /launch/compile - cross-pack', () => {
-    it('compiles lending scenario with commitments', async () => {
+    it('compiles lending scenario', async () => {
       const result = await ctx.client.compile(lendingScenarioCompileRequest());
-      const er = (result as any).executionRequest;
-      expect(er.mode).toBe('sandbox');
-      expect(er.session.participants).toHaveLength(4);
-      expect(er.session.context.loanAmount).toBe(25000);
-      expect(er.session.context.creditScore).toBe(680);
-      expect(er.session.commitments).toEqual([
-        {
-          id: 'credit-evaluated',
-          title: 'Credit evaluation complete',
-          requiredRoles: ['credit-analyst'],
-          policyRef: 'policy.lending.conservative'
-        },
-        {
-          id: 'underwriting-decision',
-          title: 'Underwriting decision finalized',
-          requiredRoles: ['risk']
-        }
-      ]);
+      const body = result as any;
+      expect(body.mode).toBe('sandbox');
+      expect(body.runDescriptor.session.participants).toHaveLength(4);
+      expect(body.scenarioMeta.sessionContext.loanAmount).toBe(25000);
+      expect(body.scenarioMeta.sessionContext.creditScore).toBe(680);
     });
 
-    it('compiles claims scenario and omits commitments when scenario declares none', async () => {
+    it('compiles claims scenario', async () => {
       const result = await ctx.client.compile(claimsScenarioCompileRequest());
-      const er = (result as any).executionRequest;
-      expect(er.mode).toBe('sandbox');
-      expect(er.session.participants).toHaveLength(4);
-      expect(er.session.context.claimAmount).toBe(8500);
-      expect(er.session.context.incidentSeverity).toBe('moderate');
-      expect(er.session.commitments).toBeUndefined();
+      const body = result as any;
+      expect(body.mode).toBe('sandbox');
+      expect(body.runDescriptor.session.participants).toHaveLength(4);
+      expect(body.scenarioMeta.sessionContext.claimAmount).toBe(8500);
+      expect(body.scenarioMeta.sessionContext.incidentSeverity).toBe('moderate');
     });
   });
 });

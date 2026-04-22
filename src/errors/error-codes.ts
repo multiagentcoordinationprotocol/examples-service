@@ -15,5 +15,7 @@ export enum ErrorCode {
   SESSION_ALREADY_EXISTS = 'SESSION_ALREADY_EXISTS',
   /** Service misconfiguration detected at startup or request time. */
   INVALID_CONFIG = 'INVALID_CONFIG',
+  /** Upstream auth-service failure while minting a JWT for an agent spawn (AUTH-2). */
+  AUTH_MINT_FAILED = 'AUTH_MINT_FAILED',
   INTERNAL_ERROR = 'INTERNAL_ERROR'
 }

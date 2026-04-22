@@ -54,31 +54,8 @@ export class HostingService {
   }
 
   private applyHostedAgents(compiled: CompileLaunchResult, hostedAgents: HostedExampleAgent[]): void {
-    for (const hosted of hostedAgents) {
-      const participant = compiled.executionRequest.session.participants.find(
-        (candidate) => candidate.id === hosted.participantId
-      );
-
-      if (!participant) {
-        continue;
-      }
-
-      participant.transportIdentity = hosted.transportIdentity;
-      participant.metadata = {
-        ...(participant.metadata ?? {}),
-        ...(hosted.participantMetadata ?? {}),
-        agentRef: hosted.agentRef,
-        framework: hosted.framework,
-        entrypoint: hosted.entrypoint,
-        bootstrapStrategy: hosted.bootstrapStrategy,
-        bootstrapMode: hosted.bootstrapMode,
-        hostedStatus: hosted.status,
-        bootstrappedBy: 'example-service'
-      };
-    }
-
-    compiled.executionRequest.session.metadata = {
-      ...(compiled.executionRequest.session.metadata ?? {}),
+    compiled.runDescriptor.session.metadata = {
+      ...(compiled.runDescriptor.session.metadata ?? {}),
       hostedParticipants: hostedAgents.map((agent) => ({
         participantId: agent.participantId,
         agentRef: agent.agentRef,

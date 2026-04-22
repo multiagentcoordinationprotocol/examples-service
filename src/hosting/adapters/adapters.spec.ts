@@ -14,6 +14,7 @@ function buildBootstrap(): BootstrapPayload {
     session_id: 'sess-uuid-v4',
     mode: 'test',
     runtime_url: '',
+    auth_token: 'jwt-test',
     participants: [],
     mode_version: '1.0.0',
     configuration_version: 'config.default',

@@ -16,12 +16,10 @@ describe('ExampleAgentCatalogService', () => {
     expect(agents).toHaveLength(4);
   });
 
-  it('every cataloged agent ships with a manifest (enables adapter-based launch, avoids legacy fallback)', () => {
+  it('every cataloged agent ships with a manifest (startup would throw otherwise)', () => {
     const agents = service.list();
     for (const agent of agents) {
       expect(agent.manifest).toBeDefined();
-      // Spot-check required manifest fields so the test fails loudly when someone
-      // wires a manifest-less agent (which would fall back to ProcessExampleAgentHostProvider.launchLegacy).
       expect(agent.manifest?.framework).toBe(agent.framework);
       expect(agent.manifest?.entrypoint?.value).toBe(agent.bootstrap.entrypoint);
     }

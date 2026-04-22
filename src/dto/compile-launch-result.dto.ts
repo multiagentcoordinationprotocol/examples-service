@@ -13,7 +13,19 @@ class ParticipantBindingDto {
 
 export class CompileLaunchResultDto {
   @ApiProperty({ type: 'object', additionalProperties: true })
-  executionRequest!: Record<string, unknown>;
+  runDescriptor!: Record<string, unknown>;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  initiator?: Record<string, unknown>;
+
+  @ApiProperty()
+  sessionId!: string;
+
+  @ApiProperty({ enum: ['live', 'sandbox'] })
+  mode!: 'live' | 'sandbox';
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  scenarioMeta!: Record<string, unknown>;
 
   @ApiProperty({ type: 'object', additionalProperties: true })
   display!: Record<string, unknown>;

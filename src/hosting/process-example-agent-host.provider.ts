@@ -1,15 +1,14 @@
 import { HttpStatus, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import {
   ExampleAgentDefinition,
   ExampleAgentRunContext,
   HostedExampleAgent,
   ParticipantAgentBinding
 } from '../contracts/example-agents';
-import { AppConfigService } from '../config/app-config.service';
+import { AppConfigService, MacpScopes } from '../config/app-config.service';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
+import { AuthTokenMinterService } from '../auth/auth-token-minter.service';
 import { ExampleAgentHostProvider } from './example-agent-host.provider';
 import { HostAdapterRegistry } from './host-adapter-registry';
 import { LaunchSupervisor } from './launch-supervisor';
@@ -25,7 +24,8 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     private readonly config: AppConfigService,
     private readonly adapterRegistry: HostAdapterRegistry,
     private readonly supervisor: LaunchSupervisor,
-    private readonly manifestValidator: ManifestValidator
+    private readonly manifestValidator: ManifestValidator,
+    private readonly authMinter: AuthTokenMinterService
   ) {}
 
   async resolve(definition: ExampleAgentDefinition, binding: ParticipantAgentBinding): Promise<HostedExampleAgent> {
@@ -96,12 +96,22 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
 
     const framework = definition.framework as AgentFramework;
     const adapter = this.adapterRegistry.get(framework);
-
-    if (adapter && definition.manifest) {
-      return this.launchViaAdapter(definition, binding, context, base);
+    if (!adapter) {
+      throw new AppException(
+        ErrorCode.INVALID_CONFIG,
+        `no host adapter registered for framework "${framework}" (agentRef=${definition.agentRef})`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+    if (!definition.manifest) {
+      throw new AppException(
+        ErrorCode.INVALID_CONFIG,
+        `agent manifest missing for ${definition.agentRef}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
 
-    return this.launchLegacy(definition, binding, context, base);
+    return this.launchViaAdapter(definition, binding, context, base);
   }
 
   onModuleDestroy(): void {
@@ -133,7 +143,7 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
       };
     }
 
-    const bootstrap = this.buildBootstrapPayload(definition, binding, context, manifest);
+    const bootstrap = await this.buildBootstrapPayload(definition, binding, context, manifest);
     const bootstrapFilePath = this.supervisor.writeBootstrapFile(bootstrap);
     const prepared = adapter.prepareLaunch({ manifest, bootstrap });
 
@@ -156,93 +166,22 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     };
   }
 
-  private launchLegacy(
-    definition: ExampleAgentDefinition,
-    binding: ParticipantAgentBinding,
-    context: ExampleAgentRunContext,
-    base: HostedExampleAgent
-  ): HostedExampleAgent {
-    const launcher = this.resolveLauncher(definition);
-    const entrypoint = this.resolveEntrypoint(definition, launcher);
-    const command = launcher === 'python' ? this.config.exampleAgentPythonPath : this.config.exampleAgentNodePath;
-
-    const manifest: AgentManifest = {
-      id: definition.agentRef,
-      name: definition.name,
-      framework: (definition.framework === 'mock' ? 'custom' : definition.framework) as AgentFramework,
-      entrypoint: {
-        type: launcher === 'python' ? 'python_file' : 'node_file',
-        value: definition.bootstrap.entrypoint
-      },
-      host: {
-        python: this.config.exampleAgentPythonPath,
-        node: this.config.exampleAgentNodePath,
-        env: definition.bootstrap.env
-      }
-    };
-
-    const bootstrap = this.buildBootstrapPayload(definition, binding, context, manifest);
-    const bootstrapFilePath = this.supervisor.writeBootstrapFile(bootstrap);
-
-    const args = [entrypoint, ...(definition.bootstrap.args ?? [])];
-    const bearerToken = this.resolveAgentToken(binding, definition);
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-      ...(definition.bootstrap.env ?? {}),
-      MACP_BOOTSTRAP_FILE: bootstrapFilePath,
-      MACP_LOG_LEVEL: 'info',
-      MACP_FRAMEWORK: definition.framework,
-      MACP_PARTICIPANT_ID: binding.participantId,
-      MACP_RUN_ID: context.runId,
-      MACP_SESSION_ID: context.sessionId ?? '',
-      MACP_RUNTIME_ADDRESS: this.config.runtimeAddress,
-      MACP_RUNTIME_TLS: String(this.config.runtimeTls),
-      MACP_RUNTIME_ALLOW_INSECURE: String(this.config.runtimeAllowInsecure),
-      MACP_RUNTIME_TOKEN: bearerToken ?? ''
-    };
-
-    const prepared = {
-      command,
-      args,
-      env,
-      cwd: process.cwd(),
-      startupTimeoutMs: 15000
-    };
-
-    const record = this.supervisor.launch(prepared, manifest, bootstrap, bootstrapFilePath);
-
-    return {
-      ...base,
-      status: 'bootstrapped',
-      participantMetadata: {
-        ...(base.participantMetadata ?? {}),
-        attachedRunId: context.runId,
-        attachedAt: record.launchedAt,
-        pid: record.child.pid,
-        command,
-        args,
-        processAttached: true,
-        launchMode: 'legacy'
-      }
-    };
-  }
-
-  private buildBootstrapPayload(
+  private async buildBootstrapPayload(
     definition: ExampleAgentDefinition,
     binding: ParticipantAgentBinding,
     context: ExampleAgentRunContext,
     _manifest: AgentManifest
-  ): BootstrapPayload {
+  ): Promise<BootstrapPayload> {
     const runtimeAddress = this.config.runtimeAddress || '';
-    const bearerToken = this.resolveAgentToken(binding, definition);
     const isInitiator = context.initiator?.participantId === binding.participantId;
+    const bearerToken = await this.resolveAgentToken(binding, definition, context, isInitiator);
     const cancelCb = this.allocateCancelCallback(binding.participantId, context.runId);
 
     const initiatorData = context.initiator;
 
     return {
       participant_id: binding.participantId,
-      session_id: context.sessionId ?? '',
+      session_id: context.sessionId,
       mode: context.modeName,
       runtime_url: runtimeAddress,
       auth_token: bearerToken,
@@ -290,8 +229,46 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     };
   }
 
-  private resolveAgentToken(binding: ParticipantAgentBinding, definition: ExampleAgentDefinition): string | undefined {
-    return this.config.resolveAgentToken(binding.participantId) ?? this.config.resolveAgentToken(definition.agentRef);
+  /**
+   * Mint a Bearer token for a given spawn via `AuthTokenMinterService`. Every
+   * spawn hits the auth-service; mint failures bubble as `AUTH_MINT_FAILED`
+   * (HTTP 502). See plans/auth-2-jwt-integration.md.
+   */
+  private async resolveAgentToken(
+    binding: ParticipantAgentBinding,
+    definition: ExampleAgentDefinition,
+    context: ExampleAgentRunContext,
+    isInitiator: boolean
+  ): Promise<string> {
+    const sender = binding.participantId;
+    if (!sender) {
+      throw new AppException(
+        ErrorCode.AUTH_MINT_FAILED,
+        `cannot mint JWT: binding has no participantId (agentRef=${definition.agentRef})`,
+        HttpStatus.BAD_GATEWAY
+      );
+    }
+
+    const scopes = this.deriveScopes(sender, context, isInitiator);
+    const minted = await this.authMinter.mintToken(sender, scopes);
+    return minted.token;
+  }
+
+  /**
+   * Build the `macp_scopes` object for a given spawn. Role defaults:
+   * - initiator     → { can_start_sessions: true,  is_observer: false, allowed_modes: [mode] }
+   * - non-initiator → { can_start_sessions: false, is_observer: false, allowed_modes: [mode] }
+   *
+   * `MACP_AUTH_SCOPES_JSON[sender]` is merged on top; explicit `null` clears.
+   */
+  private deriveScopes(sender: string, context: ExampleAgentRunContext, isInitiator: boolean): MacpScopes {
+    const base: MacpScopes = {
+      can_start_sessions: isInitiator,
+      is_observer: false,
+      allowed_modes: [context.modeName]
+    };
+    const override = this.config.authScopeOverrides[sender];
+    return this.authMinter.mergeScopes(base, override);
   }
 
   private allocateCancelCallback(participantId: string, runId: string): BootstrapPayload['cancel_callback'] {
@@ -328,28 +305,4 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     return definition.bootstrap.entrypoint.endsWith('.py') ? 'python' : 'node';
   }
 
-  private resolveEntrypoint(definition: ExampleAgentDefinition, launcher: 'node' | 'python'): string {
-    const logicalEntrypoint = definition.bootstrap.entrypoint;
-    const diskPath =
-      launcher === 'node'
-        ? this.resolveNodeEntrypoint(logicalEntrypoint)
-        : path.resolve(process.cwd(), logicalEntrypoint);
-
-    if (!fs.existsSync(diskPath)) {
-      throw new AppException(
-        ErrorCode.INTERNAL_ERROR,
-        `example agent entrypoint not found: ${diskPath}`,
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-
-    return diskPath;
-  }
-
-  private resolveNodeEntrypoint(logicalEntrypoint: string): string {
-    const compiled = logicalEntrypoint.startsWith('src/')
-      ? logicalEntrypoint.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js')
-      : logicalEntrypoint.replace(/\.ts$/, '.js');
-    return path.resolve(process.cwd(), compiled);
-  }
 }

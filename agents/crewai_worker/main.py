@@ -7,18 +7,12 @@ stream and emit responses directly. No control-plane polling.
 
 import json
 import os
-import sys
 import logging
 
-_HERE = os.path.dirname(__file__)
-_SDK_SRC = os.path.join(_HERE, '..', '..', '..', 'python-sdk', 'src')
-if os.path.isdir(_SDK_SRC) and _SDK_SRC not in sys.path:
-    sys.path.insert(0, _SDK_SRC)
+from macp_sdk.agent import from_bootstrap
 
-from macp_sdk.agent import from_bootstrap  # noqa: E402
-
-from crew import build_crew  # noqa: E402
-from mappers import map_kickoff_to_crew_inputs  # noqa: E402
+from crew import build_crew
+from mappers import map_kickoff_to_crew_inputs
 
 logger = logging.getLogger("macp.agent")
 

@@ -4,18 +4,17 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { GlobalExceptionFilter } from '../../src/errors/exception.filter';
-import { buildE2eConfig } from './e2e-config';
+import { buildE2eConfig, stubAuthMinter } from './e2e-config';
 
 describe('Mixed Framework Scenarios (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule]
-    })
-      .overrideProvider(AppConfigService)
-      .useValue(buildE2eConfig())
-      .compile();
+    const moduleFixture: TestingModule = await stubAuthMinter(
+      Test.createTestingModule({
+        imports: [AppModule]
+      }).overrideProvider(AppConfigService).useValue(buildE2eConfig())
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalFilters(new GlobalExceptionFilter());
@@ -83,8 +82,8 @@ describe('Mixed Framework Scenarios (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          expect(res.body.executionRequest).toBeDefined();
-          expect(res.body.executionRequest.session.participants).toHaveLength(4);
+          expect(res.body.runDescriptor).toBeDefined();
+          expect(res.body.runDescriptor.session.participants).toHaveLength(4);
           expect(res.body.participantBindings).toHaveLength(4);
           const frameworks = res.body.participantBindings.map((b: any) => b.agentRef);
           expect(frameworks).toContain('fraud-agent');
@@ -112,7 +111,7 @@ describe('Mixed Framework Scenarios (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          expect(res.body.compiled.executionRequest).toBeDefined();
+          expect(res.body.compiled.runDescriptor).toBeDefined();
           expect(res.body.hostedAgents).toHaveLength(4);
 
           const findAgent = (ref: string) => res.body.hostedAgents.find((a: any) => a.agentRef === ref);
@@ -166,8 +165,8 @@ describe('Mixed Framework Scenarios (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          expect(res.body.executionRequest).toBeDefined();
-          expect(res.body.executionRequest.session.participants).toHaveLength(4);
+          expect(res.body.runDescriptor).toBeDefined();
+          expect(res.body.runDescriptor.session.participants).toHaveLength(4);
           expect(res.body.display.title).toBe('Auto Claim Review');
         });
     });

@@ -56,7 +56,10 @@ describe('LaunchController', () => {
     it('should delegate body to compiler service', async () => {
       const body = { scenarioRef: 'fraud/test@1.0.0', inputs: { amount: 100 } };
       const mockResult = {
-        executionRequest: {},
+        runDescriptor: {},
+        sessionId: 'sess-1',
+        mode: 'sandbox',
+        scenarioMeta: {},
         display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' },
         participantBindings: []
       };

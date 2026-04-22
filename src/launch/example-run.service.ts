@@ -28,19 +28,20 @@ export class ExampleRunService {
     const sessionId = compiled.sessionId || randomUUID();
     compiled.sessionId = sessionId;
 
+    const session = compiled.runDescriptor.session;
     const hostedAgents = await this.hosting.attach(compiled, {
       runId: sessionId,
       sessionId,
       scenarioRef: compiled.display.scenarioRef,
-      modeName: compiled.executionRequest.session.modeName,
-      modeVersion: compiled.executionRequest.session.modeVersion,
-      configurationVersion: compiled.executionRequest.session.configurationVersion,
-      policyVersion: compiled.executionRequest.session.policyVersion,
-      policyHints: compiled.executionRequest.session.policyHints,
-      ttlMs: compiled.executionRequest.session.ttlMs,
-      sessionContext: compiled.executionRequest.session.context,
-      participants: compiled.executionRequest.session.participants.map((p) => p.id),
-      initiatorParticipantId: compiled.executionRequest.session.initiatorParticipantId,
+      modeName: session.modeName,
+      modeVersion: session.modeVersion,
+      configurationVersion: session.configurationVersion,
+      policyVersion: session.policyVersion,
+      policyHints: compiled.scenarioMeta.policyHints,
+      ttlMs: session.ttlMs,
+      sessionContext: compiled.scenarioMeta.sessionContext,
+      participants: session.participants.map((p) => p.id),
+      initiatorParticipantId: compiled.scenarioMeta.initiatorParticipantId,
       initiator: compiled.initiator
     });
 
@@ -57,24 +58,24 @@ export class ExampleRunService {
 
   private applyRequestOverrides(compiled: RunExampleResult['compiled'], request: RunExampleRequest): void {
     if (request.tags && request.tags.length > 0) {
-      const existingTags = compiled.executionRequest.execution?.tags ?? [];
+      const existingTags = compiled.runDescriptor.execution?.tags ?? [];
       const merged = [...new Set([...existingTags, ...request.tags])];
-      compiled.executionRequest.execution = {
-        ...(compiled.executionRequest.execution ?? {}),
+      compiled.runDescriptor.execution = {
+        ...(compiled.runDescriptor.execution ?? {}),
         tags: merged
       };
     }
 
     if (request.requester) {
-      compiled.executionRequest.execution = {
-        ...(compiled.executionRequest.execution ?? {}),
+      compiled.runDescriptor.execution = {
+        ...(compiled.runDescriptor.execution ?? {}),
         requester: request.requester
       };
     }
 
     if (request.runLabel) {
-      compiled.executionRequest.session.metadata = {
-        ...(compiled.executionRequest.session.metadata ?? {}),
+      compiled.runDescriptor.session.metadata = {
+        ...(compiled.runDescriptor.session.metadata ?? {}),
         runLabel: request.runLabel
       };
     }
