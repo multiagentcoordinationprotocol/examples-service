@@ -100,6 +100,10 @@ describe('AUTH-2 JWT minting (integration)', () => {
         runtimeAddress: 'runtime.local:50051',
         autoBootstrapExampleAgents: true
       });
+      // PolicyRegistrarService mints an `examples-service` admin JWT at
+      // bootstrap when runtimeAddress is set. Drop it so assertions below
+      // observe only mints driven by /examples/run.
+      authMock.clear();
     });
 
     afterEach(async () => {
