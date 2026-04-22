@@ -2,186 +2,173 @@
 
 ## Overview
 
-Every MACP worker process receives a **bootstrap payload** — a JSON file containing everything needed to start participating in a run. This contract is framework-agnostic and stable across all host adapters.
+Every MACP worker process receives a **bootstrap payload** — a JSON file
+containing everything needed to start participating in a run. The shape is
+flat and framework-agnostic; both `macp_sdk` (Python) and
+`macp-sdk-typescript` consume it verbatim via their `fromBootstrap()` entry
+points.
 
-As of April 2026 the contract carries direct-agent-auth fields (per-agent Bearer token, runtime gRPC address, initiator payload, cancel callback). See `docs/direct-agent-auth.md` for the end-to-end flow.
+As of April 2026 the contract carries direct-agent-auth fields — a per-agent
+Bearer token, the runtime gRPC address, an initiator payload, and an optional
+cancel-callback tuple. See `docs/direct-agent-auth.md` for the end-to-end
+flow.
 
-## Delivery Mechanism
+## Delivery mechanism
 
-The bootstrap payload is delivered via:
-- **File path**: `MACP_BOOTSTRAP_FILE` environment variable points to a temp JSON file
-- **Convenience env vars**: `MACP_CONTROL_PLANE_URL`, `MACP_FRAMEWORK`, `MACP_PARTICIPANT_ID`, `MACP_RUN_ID`, `MACP_SESSION_ID`, `MACP_RUNTIME_ADDRESS`, `MACP_RUNTIME_TOKEN`, `MACP_RUNTIME_TLS`, `MACP_RUNTIME_ALLOW_INSECURE`, `MACP_CANCEL_CALLBACK_HOST` / `_PORT` / `_PATH`, `MACP_LOG_LEVEL`
+- **File path**: `MACP_BOOTSTRAP_FILE` environment variable points to a temp
+  JSON file written by `LaunchSupervisor.writeBootstrapFile()` before the
+  worker process is spawned.
+- **Convenience env vars**: `MACP_FRAMEWORK`, `MACP_PARTICIPANT_ID`,
+  `MACP_RUN_ID`, `MACP_SESSION_ID`, `MACP_RUNTIME_ADDRESS`,
+  `MACP_RUNTIME_TOKEN`, `MACP_RUNTIME_TLS`, `MACP_RUNTIME_ALLOW_INSECURE`,
+  `MACP_CANCEL_CALLBACK_HOST` / `_PORT` / `_PATH`, `MACP_LOG_LEVEL`. These are
+  populated by `buildAgentEnv()` in
+  `src/hosting/adapters/agent-env.ts` and are intended as a convenience —
+  the JSON file is authoritative.
 
-Legacy workers also receive `EXAMPLE_AGENT_*` and `CONTROL_PLANE_*` env vars for backward compatibility.
+## Bootstrap payload schema
 
-## Bootstrap Payload Schema
+The canonical TypeScript definition lives at
+`src/hosting/contracts/bootstrap.types.ts`. The shape is intentionally flat
+and uses `snake_case` keys so it matches the upstream SDKs' `fromBootstrap`
+expectations:
 
 ```typescript
 interface BootstrapPayload {
-  run: {
-    runId: string;           // Unique run identifier
-    sessionId: string;       // Pre-allocated UUID v4 — shared by every agent + CP
-    traceId?: string;        // Distributed trace ID
-  };
-  participant: {
-    participantId: string;   // This worker's participant ID
-    agentId: string;         // Agent reference (e.g., "fraud-agent")
-    displayName: string;     // Human-readable name
-    role: string;            // Role in the session (e.g., "fraud", "risk")
-  };
-  runtime: {
-    // Direct-agent-auth — populated when the examples-service has a token
-    // for this agent; empty on legacy observability-only agents.
-    address?: string;        // gRPC endpoint (e.g., "runtime.local:50051")
-    bearerToken?: string;    // This agent's Bearer token (RFC-MACP-0004 §4)
-    tls?: boolean;           // RFC-MACP-0006 §3 — default true in prod
-    allowInsecure?: boolean; // Must be true when tls=false (local dev only)
+  participant_id: string;           // Agent's sender identity in this session
+  session_id: string;               // UUID v4, allocated at compile time
+  mode: string;                     // e.g. "macp.mode.decision.v1"
+  runtime_url: string;              // gRPC endpoint (e.g. "runtime.local:50051")
+  auth_token?: string;              // Per-agent Bearer token (RFC-MACP-0004 §4)
+  agent_id?: string;                // Dev-only identity header value
+  secure?: boolean;                 // TLS flag (RFC-MACP-0006 §3)
+  allow_insecure?: boolean;         // Required when secure=false
+  participants?: string[];          // All participant IDs in the session
+  mode_version?: string;
+  configuration_version?: string;
+  policy_version?: string;
 
-    // Legacy HTTP observability — read-only after ES-8 narrowing.
-    baseUrl: string;         // Control plane base URL
-    messageEndpoint: string; // @deprecated — write path removed
-    eventsEndpoint: string;  // Path to poll events
-    apiKey?: string;         // Bearer token for control-plane HTTP polling
-    timeoutMs: number;       // HTTP request timeout
-    joinMetadata: {
-      transport: "http" | "grpc";  // "grpc" when direct-agent-auth is active
-      messageFormat: "macp";
-    };
-  };
-  execution: {
-    scenarioRef: string;     // e.g., "fraud/high-value-new-device@1.0.0"
-    modeName: string;        // e.g., "macp.mode.decision.v1"
-    modeVersion: string;
-    configurationVersion: string;
-    policyVersion?: string;  // e.g., "policy.fraud.majority-veto"
-    policyHints?: {          // Policy metadata (RFC-MACP-0012 aligned)
-      type?: string;         // e.g., "majority", "unanimous", "none"
-      description?: string;
-      threshold?: number;    // Voting threshold (0-1)
-      vetoEnabled?: boolean;
-      vetoRoles?: string[];
-      vetoThreshold?: number;      // Blocking objections needed for veto (default 1)
-      minimumConfidence?: number;  // Min confidence for evaluations (default 0.0)
-      designatedRoles?: string[];  // Roles with commitment authority
-    };
-    ttlMs: number;           // Session time-to-live
-    initiatorParticipantId?: string;
-    tags?: string[];
-    requester?: string;
-  };
-  session: {
-    context: Record<string, unknown>;  // Session context (scenario inputs)
-    participants: string[];             // All participant IDs in the run
-    metadata?: Record<string, unknown>;
-  };
-  agent: {
-    manifest: Record<string, unknown>;       // The agent's manifest
-    framework: string;                        // "langgraph", "langchain", "crewai", "custom"
-    frameworkConfig?: Record<string, unknown>; // Framework-specific config
-  };
-  /** @deprecated Use `initiator.kickoff` instead. Retained for legacy workers. */
-  kickoff?: {
-    messageType: string;
-    payload: Record<string, unknown>;
-  };
-  /**
-   * Present ONLY on the initiator agent's bootstrap. Carries the payload
-   * for the first SessionStart envelope and the first mode-specific envelope.
-   */
+  /** Present ONLY on the initiator agent's bootstrap. */
   initiator?: {
-    sessionStart: {
+    session_start: {
       intent: string;
       participants: string[];
-      ttlMs: number;
-      modeVersion: string;
-      configurationVersion: string;
-      policyVersion?: string;
+      ttl_ms: number;
+      mode_version: string;
+      configuration_version: string;
+      policy_version?: string;
       context?: Record<string, unknown>;
-      roots?: { uri: string; name?: string }[];
+      context_id?: string;
+      extensions?: Record<string, unknown>;
+      roots?: Array<{ uri: string; name?: string }>;
     };
     kickoff?: {
-      messageType: string;     // e.g. "Proposal"
-      payloadType?: string;    // proto typeName (optional)
+      message_type: string;         // e.g. "Proposal"
+      payload_type?: string;        // proto typeName (optional)
       payload: Record<string, unknown>;
     };
   };
-  /** RFC-0001 §7.2 Option A: local HTTP endpoint the CP POSTs to cancel. */
-  cancelCallback?: {
+
+  /** RFC-0001 §7.2 Option A: local HTTP endpoint for cancel delivery. */
+  cancel_callback?: {
     host: string;
     port: number;
     path: string;
   };
+
+  /** Metadata not consumed by the SDK; available to agent logic. */
+  metadata?: {
+    run_id?: string;
+    trace_id?: string;
+    scenario_ref?: string;
+    role?: string;
+    framework?: string;
+    agent_ref?: string;
+    policy_hints?: Record<string, unknown>;   // RFC-MACP-0012 shape
+    session_context?: Record<string, unknown>;
+  };
 }
 ```
 
-## Worker Lifecycle (direct-agent-auth)
+`metadata.policy_hints` carries the RFC-MACP-0012 fields consumed by
+`PolicyStrategy`:
 
-1. **Bootstrap**: Worker reads `MACP_BOOTSTRAP_FILE`.
-2. **Authenticate**: Worker instantiates `MacpClient(address=runtime.address, auth=Auth.bearer(runtime.bearerToken, {expectedSender: participantId}))` and calls `initialize()`.
+| Field                 | Default | Description                                                         |
+|-----------------------|---------|---------------------------------------------------------------------|
+| `type`                | `none`  | `majority`, `supermajority`, `unanimous`, `none`                    |
+| `threshold`           | —       | Approval rate (0–1) required to pass                                |
+| `vetoEnabled`         | `false` | Whether critical-severity objections veto                           |
+| `vetoThreshold`       | `1`     | Number of critical objections required for veto                     |
+| `minimumConfidence`   | `0.0`   | Minimum confidence for an evaluation to count                       |
+| `designatedRoles`     | `[]`    | Roles allowed to author the terminal commitment                     |
+
+## Worker lifecycle (direct-agent-auth)
+
+1. **Bootstrap** — worker reads `MACP_BOOTSTRAP_FILE`.
+2. **Authenticate** — SDK constructs the gRPC client using `runtime_url` +
+   `auth_token`. TLS is enforced unless `secure=false` *and*
+   `allow_insecure=true`.
 3. **Branch on initiator**:
-   - **Initiator**: `DecisionSession.start(...)` then `.propose(kickoff.payload)`.
-   - **Non-initiator**: `DecisionSession.openStream()` and react to events.
-4. **Observe**: Worker optionally polls `GET /runs/{runId}/events?afterSeq=N` for read-only observability (policy quorum logic, etc.).
-5. **Emit**: Worker uses mode-helper methods (`.evaluate`, `.vote`, `.commit`, `.raiseObjection`) on the `DecisionSession` — all writes go over gRPC to the runtime, never through the control-plane.
-6. **Cancel callback**: Worker binds an HTTP listener at `cancelCallback.host/port/path`; on POST it calls `session.cancel(reason)`.
-7. **Exit**: Worker exits on terminal run status or after emitting its committal envelope.
+   - **Initiator** — SDK emits `SessionStart` with `initiator.session_start`
+     and then the first mode-specific envelope described by
+     `initiator.kickoff`.
+   - **Non-initiator** — SDK opens the session stream and waits for history
+     replay + live events (RFC-MACP-0006 §3.2 passive subscribe).
+4. **React** — handlers receive `Proposal`, `Evaluation`, `Objection`, `Vote`,
+   `Commitment`, etc., depending on the mode.
+5. **Emit** — `ctx.actions.evaluate() / .vote() / .commit() / .objection()`
+   write directly to the runtime over the agent's own gRPC channel.
+6. **Cancel callback** — if `cancel_callback` is present, the worker binds a
+   small HTTP listener; the control-plane (or an operator) POSTs
+   `{ runId, reason }` to trigger a graceful shutdown.
+7. **Exit** — terminal status closes the stream; `participant.onTerminal()`
+   fires and the worker exits.
 
-## Using the Python SDK (Participant Abstraction)
+## Using the Python SDK
 
 ```python
-from macp_worker_sdk.participant import from_bootstrap
-from macp_worker_sdk.bootstrap import log_agent
+from macp_sdk.agent import from_bootstrap
 
-participant = from_bootstrap()
+participant = from_bootstrap()  # reads MACP_BOOTSTRAP_FILE automatically
 
-@participant.on('Proposal')
-def handle_proposal(ctx):
-    # ctx.bootstrap — full BootstrapContext (session_context, policy_hints, etc.)
-    # ctx.actions — evaluate(), object(), vote(), commit()
-    # ctx.proposal_id, ctx.sender, ctx.payload — event data
+def handle_proposal(message, ctx):
     ctx.actions.evaluate(
-        proposal_id=ctx.proposal_id,
-        recommendation='APPROVE',
+        message.proposal_id or "",
+        "APPROVE",
         confidence=0.85,
-        reason='looks good',
+        reason="looks good",
     )
     participant.stop()
 
+participant.on("Proposal", handle_proposal)
 participant.run()
 ```
 
-## Using the Node SDK (Participant Abstraction)
+See `agents/langgraph_worker/main.py`, `agents/langchain_worker/main.py`, and
+`agents/crewai_worker/main.py` for end-to-end examples that wire a real
+LangGraph graph / LangChain chain / CrewAI crew into this skeleton.
+
+## Using the Node SDK
 
 ```typescript
-import { Participant, loadBootstrap, logAgent } from '../sdk/node';
+import { agent } from 'macp-sdk-typescript';
 
-const bootstrap = loadBootstrap();
-const participant = new Participant(bootstrap);
+const participant = agent.fromBootstrap();
 
-participant.on('Proposal', async (ctx) => {
-  await ctx.actions.evaluate({
-    proposalId: ctx.proposalId!,
+participant.on('Proposal', async (message, ctx) => {
+  await ctx.actions.evaluate?.({
+    proposalId: message.proposalId ?? '',
     recommendation: 'APPROVE',
     confidence: 0.85,
     reason: 'acceptable risk'
   });
-  participant.stop();
+  await participant.stop();
 });
 
 await participant.run();
 ```
 
-## Low-Level SDK (Direct Client Access)
-
-The `Participant` abstraction is the recommended approach. For advanced use cases, you can still use the low-level client directly:
-
-```python
-from macp_worker_sdk import load_bootstrap, ControlPlaneClient, MacpMessageBuilder
-
-ctx = load_bootstrap()
-client = ControlPlaneClient(ctx)
-builder = MacpMessageBuilder(ctx.run_id, ctx.participant_id, ctx.framework, ctx.participant.agent_id)
-events = client.get_events(after_seq=0)
-msg = builder.evaluation(proposal_id, 'APPROVE', 0.85, 'looks good', recipients)
-client.send_message(msg)
-```
+The in-tree coordinator at `src/example-agents/runtime/risk-decider.worker.ts`
+follows this pattern; the only extra machinery it owns is the
+`PolicyStrategy` (quorum + voting + veto) and the cancel-callback HTTP server
+at `src/example-agents/runtime/cancel-callback-server.ts`.

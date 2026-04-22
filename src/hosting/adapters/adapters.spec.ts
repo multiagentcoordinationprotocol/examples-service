@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { LangGraphHostAdapter } from './langgraph-host-adapter';
 import { LangChainHostAdapter } from './langchain-host-adapter';
 import { CrewAIHostAdapter } from './crewai-host-adapter';
@@ -233,5 +236,85 @@ describe('CustomHostAdapter', () => {
     const prepared = adapter.prepareLaunch({ manifest, bootstrap: buildBootstrap() });
     expect(prepared.command).toBe('python3');
     expect(prepared.env.PYTHONUNBUFFERED).toBe('1');
+  });
+
+  describe('node_file entrypoint src/*.ts → dist/*.js resolution', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-host-adapter-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('rewrites src/*.ts to dist/*.js when compiled file exists (Docker scenario)', () => {
+      // Simulate the Docker layout: only dist/ is present on disk.
+      const distDir = path.join(tmpDir, 'dist', 'example-agents', 'runtime');
+      fs.mkdirSync(distDir, { recursive: true });
+      fs.writeFileSync(path.join(distDir, 'risk-decider.worker.js'), '// compiled');
+
+      const manifest: AgentManifest = {
+        id: 'risk-agent',
+        name: 'Risk Agent',
+        framework: 'custom',
+        entrypoint: { type: 'node_file', value: 'src/example-agents/runtime/risk-decider.worker.ts' },
+        host: { cwd: tmpDir }
+      };
+      const prepared = adapter.prepareLaunch({ manifest, bootstrap: buildBootstrap() });
+      expect(prepared.args[0]).toBe('dist/example-agents/runtime/risk-decider.worker.js');
+    });
+
+    it('prefers dist/*.js over src/*.ts when BOTH exist (Node cannot run TS directly)', () => {
+      // Simulate the local dev post-build layout: src/ AND dist/ both exist.
+      // Without this preference, Node would try to execute the .ts source and crash.
+      const srcDir = path.join(tmpDir, 'src', 'example-agents', 'runtime');
+      const distDir = path.join(tmpDir, 'dist', 'example-agents', 'runtime');
+      fs.mkdirSync(srcDir, { recursive: true });
+      fs.mkdirSync(distDir, { recursive: true });
+      fs.writeFileSync(path.join(srcDir, 'risk-decider.worker.ts'), '// source');
+      fs.writeFileSync(path.join(distDir, 'risk-decider.worker.js'), '// compiled');
+
+      const manifest: AgentManifest = {
+        id: 'risk-agent',
+        name: 'Risk Agent',
+        framework: 'custom',
+        entrypoint: { type: 'node_file', value: 'src/example-agents/runtime/risk-decider.worker.ts' },
+        host: { cwd: tmpDir }
+      };
+      const prepared = adapter.prepareLaunch({ manifest, bootstrap: buildBootstrap() });
+      expect(prepared.args[0]).toBe('dist/example-agents/runtime/risk-decider.worker.js');
+    });
+
+    it('falls back to raw value when neither dist/*.js nor the file exists', () => {
+      const manifest: AgentManifest = {
+        id: 'risk-agent',
+        name: 'Risk Agent',
+        framework: 'custom',
+        entrypoint: { type: 'node_file', value: 'src/missing/module.ts' },
+        host: { cwd: tmpDir }
+      };
+      // No files exist — adapter returns the logical value untouched; the
+      // launch supervisor is responsible for reporting the failure.
+      const prepared = adapter.prepareLaunch({ manifest, bootstrap: buildBootstrap() });
+      expect(prepared.args[0]).toBe('src/missing/module.ts');
+    });
+
+    it('leaves a raw absolute-ish js path untouched when it exists', () => {
+      const jsDir = path.join(tmpDir, 'agents');
+      fs.mkdirSync(jsDir, { recursive: true });
+      fs.writeFileSync(path.join(jsDir, 'risk.js'), '// plain');
+
+      const manifest: AgentManifest = {
+        id: 'risk-agent',
+        name: 'Risk Agent',
+        framework: 'custom',
+        entrypoint: { type: 'node_file', value: 'agents/risk.js' },
+        host: { cwd: tmpDir }
+      };
+      const prepared = adapter.prepareLaunch({ manifest, bootstrap: buildBootstrap() });
+      expect(prepared.args[0]).toBe('agents/risk.js');
+    });
   });
 });

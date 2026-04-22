@@ -59,20 +59,21 @@ export class CustomHostAdapter implements AgentHostAdapter {
   }
 
   /**
-   * Resolve a node_file entrypoint from src/*.ts to dist/*.js when the source
-   * file doesn't exist on disk (e.g. in Docker where only compiled JS is present).
+   * Resolve a node_file entrypoint to a runnable JS file. Always prefers the
+   * compiled `dist/*.js` when a `src/*.ts` is declared, because Node cannot
+   * run TypeScript sources directly without a loader.
    */
   private resolveEntrypoint(value: string, type: string, cwd: string): string {
     if (type !== 'node_file') return value;
 
-    const absolute = path.resolve(cwd, value);
-    if (fs.existsSync(absolute)) return value;
-
-    // Try src/ → dist/ and .ts → .js
+    // Always prefer compiled JS when the manifest declares a src/*.ts path.
     if (value.startsWith('src/') && value.endsWith('.ts')) {
       const compiled = value.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js');
       if (fs.existsSync(path.resolve(cwd, compiled))) return compiled;
     }
+
+    const absolute = path.resolve(cwd, value);
+    if (fs.existsSync(absolute)) return value;
 
     return value;
   }

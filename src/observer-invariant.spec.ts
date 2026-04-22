@@ -31,6 +31,14 @@ const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
     pattern: /POST\s+\/runs\/[^/]+\/(messages|signal|context)\b/i,
     reason: 'Control-plane write routes deleted in CP-5..7; they return 410 Gone.'
+  },
+  {
+    pattern: /from\s+['"][^'"]*\/control-plane\/[^'"]*['"]/,
+    reason: 'The local control-plane HTTP client was removed with direct-agent-auth; agents talk to the runtime over gRPC.'
+  },
+  {
+    pattern: /['"]\/runtime\/policies(?:\/|['"])/,
+    reason: 'Policy CRUD endpoints on the control-plane were removed; policies ship inline via bootstrap policyHints.'
   }
 ];
 

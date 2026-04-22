@@ -28,19 +28,30 @@ In a production deployment, these three things are separate:
 src/
   catalog/           → Pack/scenario listing + AgentProfileService (scenario coverage computation)
   compiler/          → Input validation (AJV) + template substitution + RunDescriptor + scenarioSpec assembly
-  config/            → Environment-based configuration (global module)
+  config/            → Environment-based configuration (global module; runtime gRPC address, TLS, per-agent tokens)
   contracts/         → TypeScript interfaces — registry types, launch types, agent types
-  control-plane/     → HTTP client for the control plane (/runs/validate, /runs)
   controllers/       → REST endpoints (health, catalog, launch, examples, agents)
   dto/               → Swagger-annotated request/response DTOs
   errors/            → AppException, ErrorCode enum, GlobalExceptionFilter
   example-agents/    → Hard-coded example agent catalog (fraud, growth, compliance, risk)
-    runtime/         → Worker runtime: control-plane client + risk-decider worker
+    runtime/         → In-tree Node worker runtime for the custom Risk Agent:
+                         bootstrap-loader, cancel-callback-server, policy-strategy,
+                         risk-decider.worker (uses macp-sdk-typescript directly)
   hosting/           → Two-phase agent hosting (resolve + attach) + pluggable host providers
+    adapters/        → Framework adapters (langgraph, langchain, crewai, custom)
+                         + agent-env for convenience env vars
+    contracts/       → AgentManifest, BootstrapPayload, AgentHostAdapter types
   launch/            → Launch schema generation + ExampleRunService (full showcase flow)
   middleware/        → Correlation ID + request logging + API key guard
+  policy/            → PolicyLoaderService (reads policies/ JSON files)
+  observability/     → Observer-invariant tests (prevents any HTTP write to deleted CP routes)
   registry/          → File-backed YAML loader + in-memory cache index
 ```
+
+Note: `src/control-plane/` was removed during the direct-agent-auth rollout
+(April 2026). The examples-service no longer has a runtime dependency on the
+control-plane's HTTP API — runs are initiated by spawning agents that connect
+directly to the MACP runtime over gRPC.
 
 ## Request Flow
 
@@ -101,15 +112,12 @@ POST /examples/run
     2. Apply request overrides (tags, requester, runLabel) if provided
     3. Resolve agents → HostingService.resolve() → ProcessExampleAgentHostProvider
        → Inject transport identities into the scenarioSpec participants
-    4. Submit to control plane (optional)
-       → ControlPlaneClient.validate(runDescriptor) + .createRun(runDescriptor)
-       → control-plane returns {runId, sessionId, traceId, status}
-    5. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
-       → Each agent's bootstrap carries its own runtime.bearerToken + sessionId;
-         initiator's bootstrap also carries SessionStart + kickoff payload.
+    4. Attach agents → HostingService.attach() → Spawn Python/Node worker processes
+       → Each agent's bootstrap carries its own auth_token + session_id;
+         initiator's bootstrap also carries session_start + kickoff payload.
        → Agents open gRPC channels to the runtime directly (RFC-MACP-0004 §4);
-         control-plane polls read-only for projection/SSE.
-    6. Return compiled + hostedAgents + controlPlane status
+         control-plane observes read-only (projection/SSE).
+    5. Return compiled + hostedAgents + sessionId
 ```
 
 ### 5. Browse Agents
@@ -151,11 +159,11 @@ The example agents use an **active process-backed** hosting strategy with direct
 
 - Service resolves agent definitions from a hard-coded catalog (fraud, growth, compliance, risk)
 - Transport identities are injected into the compiled `scenarioSpec` participants
-- After the control plane creates a run and returns `sessionId`, lightweight Python and Node worker processes are spawned with per-agent bootstrap files
-- Workers read the bootstrap to obtain their own runtime gRPC address + Bearer token and open a dedicated `MacpClient` channel
-- Workers poll the control plane for run state and events (`GET /runs/:id/events`) — read-only observability
-- Workers emit envelopes (Proposal / Evaluation / Vote / Commitment / SessionStart / cancellation) via `macp-sdk-*` directly to the runtime — the control-plane never writes on their behalf
-- Each framework is demonstrated: LangGraph (fraud), LangChain (growth), CrewAI (compliance), custom (risk)
+- The examples-service pre-allocates a UUID v4 `sessionId` at compile time and threads it into every agent bootstrap
+- Lightweight Python and Node worker processes are spawned with per-agent bootstrap files (`MACP_BOOTSTRAP_FILE`)
+- Workers read the bootstrap to obtain their own runtime gRPC address + Bearer token and open a dedicated gRPC channel via `macp-sdk` / `macp-sdk-typescript`
+- Workers emit envelopes (Proposal / Evaluation / Vote / Commitment / Objection / SessionStart / cancellation) via the SDK mode-helpers directly to the runtime — the control-plane never writes on their behalf
+- Each framework is demonstrated: LangGraph (fraud), LangChain (growth), CrewAI (compliance), custom Node (risk)
 - The `InMemoryExampleAgentHostProvider` is available as a manifest-only fallback for environments without Python (test + dev only)
 
 ## Caching

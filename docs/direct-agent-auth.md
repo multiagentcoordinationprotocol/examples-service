@@ -90,22 +90,18 @@ UI → examples-service: POST /examples/run
   ↓
 examples-service compiles scenario → {runDescriptor, executionRequest, initiator, sessionId}
   ↓
-examples-service: POST /runs (legacy executionRequest) to control-plane
-  (once CP-1 lands, POST RunDescriptor instead; sessionId echoed back)
-  ↓
 examples-service: spawns N agent processes with per-agent bootstrap files
-  (initiator agent's file has `initiator.sessionStart + kickoff`)
+  (initiator agent's file has `initiator.session_start + kickoff`)
   ↓
 Each agent:
-  - loads bootstrap
-  - if runtime.address && runtime.bearerToken → open MacpClient (gRPC)
-  - initialize()
-  - if initiator: DecisionSession.start() + .propose(kickoff)
-    else: DecisionSession.openStream() and react
-  - binds cancel-callback HTTP server at cancelCallback.host/port/path
-  - polls control-plane /runs/:id/events for observability
+  - reads MACP_BOOTSTRAP_FILE
+  - SDK (macp_sdk / macp-sdk-typescript) opens the runtime gRPC channel using
+    runtime_url + auth_token and calls initialize()
+  - if initiator: session.start() + first mode envelope (e.g. Proposal)
+    else: session.openStream() and react to history replay + live events
+  - binds cancel-callback HTTP server at cancel_callback.host/port/path
   ↓
-Control-plane observer: GetSession(sessionId) → StreamSession(sessionId, read-only)
+Control-plane observer: StreamSession(sessionId, read-only)
                         → projection → SSE broadcast to UI
 ```
 
@@ -162,7 +158,13 @@ This plan has matching tasks in:
 - The `executionRequest.session.metadata.sessionId` carries the compiled
   sessionId, so observer tooling that reads metadata already sees the same
   id as the agents use.
-- `RunDescriptor` is produced on every compile today; once the control-plane
-  accepts it, switch `ControlPlaneClient.createRun()` from
-  `request.executionRequest` to `request.runDescriptor` — no other caller
-  change required.
+- `runDescriptor` is produced on every compile and returned in the
+  `CompileLaunchResult` alongside the legacy `executionRequest`. When a caller
+  is ready to switch to the scenario-agnostic contract, it can consume
+  `compiled.runDescriptor` instead of `compiled.executionRequest` with no
+  changes to the examples-service.
+- The examples-service no longer ships a control-plane HTTP client. Earlier
+  versions in this tree held `src/control-plane/control-plane.client.ts`; that
+  module was removed when the service moved to an observer-only control-plane
+  model. If a future revision re-introduces a control-plane submit step, add
+  a new module under `src/control-plane/` rather than reviving the old shape.

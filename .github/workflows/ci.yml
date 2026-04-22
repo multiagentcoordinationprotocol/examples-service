@@ -66,6 +66,10 @@ jobs:
       - run: npm run build
       - run: npm test -- --coverage --forceExit
       - run: npm run test:e2e -- --forceExit
+      - name: Integration tests (mock control plane)
+        run: npm run test:integration -- --forceExit
+        env:
+          INTEGRATION_CONTROL_PLANE: mock
 
       - name: Validate Python workers
         run: |
