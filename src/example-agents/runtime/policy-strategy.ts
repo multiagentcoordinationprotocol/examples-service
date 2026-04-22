@@ -43,7 +43,7 @@ export function createPolicyStrategy(policyHints: PolicyHints | undefined): Poli
   return {
     isQuorumMet(signals, totalExpected) {
       if (type === 'unanimous') return signals.size >= totalExpected;
-      if (type === 'none') return signals.size > 0;
+      if (type === 'none') return signals.size >= totalExpected;
       return signals.size >= Math.max(1, Math.ceil(totalExpected * threshold));
     },
 

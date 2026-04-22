@@ -265,7 +265,10 @@ export class ProcessExampleAgentHostProvider implements ExampleAgentHostProvider
     const base: MacpScopes = {
       can_start_sessions: isInitiator,
       is_observer: false,
-      allowed_modes: [context.modeName]
+      // Include empty string so the agent can also emit ambient envelopes
+      // (Signal/Progress) which have no mode set. Without "" the runtime's
+      // authorize_mode check rejects ambient envelopes as FORBIDDEN.
+      allowed_modes: [context.modeName, '']
     };
     const override = this.config.authScopeOverrides[sender];
     return this.authMinter.mergeScopes(base, override);

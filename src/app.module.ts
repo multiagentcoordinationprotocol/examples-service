@@ -24,6 +24,7 @@ import { ApiKeyGuard } from './middleware/api-key.guard';
 import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { PolicyLoaderService } from './policy/policy-loader.service';
+import { PolicyRegistrarService } from './policy/policy-registrar.service';
 import { FileRegistryLoader } from './registry/file-registry.loader';
 import { RegistryIndexService } from './registry/registry-index.service';
 
@@ -48,6 +49,7 @@ import { RegistryIndexService } from './registry/registry-index.service';
     },
     HostingService,
     PolicyLoaderService,
+    PolicyRegistrarService,
     ExampleRunService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: ApiKeyGuard }
