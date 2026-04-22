@@ -16,13 +16,16 @@ describe('PolicyStrategy', () => {
   describe('createPolicyStrategy with no hints (default/none)', () => {
     const strategy = createPolicyStrategy(undefined);
 
-    it('quorum met with at least 1 signal', () => {
-      const signals = signalMap(signal('a', 'Evaluation', { recommendation: 'APPROVE' }));
-      expect(strategy.isQuorumMet(signals, 3)).toBe(true);
-    });
-
-    it('quorum not met with 0 signals', () => {
+    it('quorum requires all expected specialists (policy=none waits for everyone, then applies pass/block)', () => {
       expect(strategy.isQuorumMet(new Map(), 3)).toBe(false);
+      expect(strategy.isQuorumMet(signalMap(signal('a', 'Evaluation')), 3)).toBe(false);
+      expect(strategy.isQuorumMet(signalMap(signal('a', 'Evaluation'), signal('b', 'Evaluation')), 3)).toBe(false);
+      expect(
+        strategy.isQuorumMet(
+          signalMap(signal('a', 'Evaluation'), signal('b', 'Evaluation'), signal('c', 'Evaluation')),
+          3
+        )
+      ).toBe(true);
     });
 
     it('approves when no blocking signals', () => {

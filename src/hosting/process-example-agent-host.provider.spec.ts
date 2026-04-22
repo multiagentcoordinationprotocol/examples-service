@@ -380,7 +380,7 @@ describe('ProcessExampleAgentHostProvider', () => {
       expect(mintSpy).toHaveBeenCalledWith('fraud-agent', {
         can_start_sessions: true,
         is_observer: false,
-        allowed_modes: ['macp.mode.decision.v1']
+        allowed_modes: ['macp.mode.decision.v1', '']
       });
       const bootstrap = writeSpy.mock.calls[0][0];
       expect(bootstrap.auth_token).toBe('jwt-minted-fraud');
@@ -433,7 +433,7 @@ describe('ProcessExampleAgentHostProvider', () => {
       expect(mintSpy).toHaveBeenCalledWith('risk-agent', {
         can_start_sessions: false,
         is_observer: false,
-        allowed_modes: ['macp.mode.decision.v1']
+        allowed_modes: ['macp.mode.decision.v1', '']
       });
     });
 
@@ -473,7 +473,7 @@ describe('ProcessExampleAgentHostProvider', () => {
       expect(mintSpy).toHaveBeenCalledWith('fraud-agent', {
         can_start_sessions: false,
         is_observer: true,
-        allowed_modes: ['macp.mode.decision.v1'],
+        allowed_modes: ['macp.mode.decision.v1', ''],
         max_open_sessions: 2
       });
     });

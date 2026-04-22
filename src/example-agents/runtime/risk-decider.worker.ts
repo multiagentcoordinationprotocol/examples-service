@@ -7,7 +7,7 @@
  *
  * No control-plane polling — all event flow is agent ↔ runtime via gRPC.
  */
-import { agent } from 'macp-sdk-typescript';
+import { agent, buildEnvelope, buildSignalPayload } from 'macp-sdk-typescript';
 const { fromBootstrap } = agent;
 type IncomingMessage = agent.IncomingMessage;
 type HandlerContext = agent.HandlerContext;
@@ -21,6 +21,34 @@ function log(msg: string, details?: Record<string, unknown>): void {
 
 function inferOutcomePositive(action: string): boolean {
   return action !== 'decline';
+}
+
+async function emitSessionContext(participant: ReturnType<typeof fromBootstrap>, bootstrap: ReturnType<typeof loadBootstrapPayload>): Promise<void> {
+  const sessionContext = (bootstrap.metadata?.session_context ?? {}) as Record<string, unknown>;
+  if (Object.keys(sessionContext).length === 0) return;
+
+  const payload = buildSignalPayload({
+    signalType: 'session.context',
+    data: Buffer.from(JSON.stringify(sessionContext), 'utf-8'),
+    confidence: 1,
+    correlationSessionId: bootstrap.session_id ?? ''
+  });
+  // Ambient envelope: empty session_id + empty mode (RFC-MACP-0001). Use the
+  // proto registry's encodeKnownPayload (the helper that handles plain JS
+  // payloads — buildSignalPayload returns a struct, not a protobufjs Message).
+  const envelope = buildEnvelope({
+    mode: '',
+    messageType: 'Signal',
+    sessionId: '',
+    sender: bootstrap.participant_id,
+    payload: participant.client.protoRegistry.encodeKnownPayload('', 'Signal', payload as unknown as Record<string, unknown>)
+  });
+  try {
+    await participant.client.send(envelope, { auth: participant.auth });
+    log('session.context signal emitted', { fields: Object.keys(sessionContext).length });
+  } catch (err) {
+    log('session.context signal failed', { error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 async function main(): Promise<void> {
@@ -44,14 +72,43 @@ async function main(): Promise<void> {
     policyType: policyHints.type ?? 'none'
   });
 
+  let sessionContextEmitted = false;
+
   const signals = new Map<string, SpecialistSignal>();
   let proposalId: string | undefined;
   let committed = false;
+  let pendingHandlerCtx: HandlerContext | undefined;
+  let waitTimer: NodeJS.Timeout | undefined;
+
+  // Max time to wait for all specialists to vote before committing with whatever
+  // has arrived. Overridable via env for tests/demos.
+  const WAIT_ALL_TIMEOUT_MS = Number(process.env.RISK_DECIDER_WAIT_ALL_TIMEOUT_MS ?? 60_000);
 
   participant.on('Proposal', (message: IncomingMessage) => {
     if (!proposalId) {
       proposalId = message.proposalId ?? undefined;
-      log('proposal observed', { proposalId });
+      log('proposal observed', { proposalId, expectedSpecialists: recipients.length });
+
+      // Emit session.context once we know CP has had time to create the run
+      // (Proposal observation implies SessionStart processed → session bound →
+      // CP's WatchSessions has discovered + created the run).
+      if (!sessionContextEmitted) {
+        sessionContextEmitted = true;
+        void emitSessionContext(participant, bootstrap);
+      }
+      // Arm the deadline. If any specialist crashes / never votes, this
+      // commits with whatever signals we have so the session doesn't
+      // hang until TTL expiry.
+      waitTimer = setTimeout(() => {
+        if (!committed && pendingHandlerCtx) {
+          log('wait-all deadline reached — forcing commit', {
+            received: signals.size,
+            expected: recipients.length
+          });
+          void tryCommit(pendingHandlerCtx, true);
+        }
+      }, WAIT_ALL_TIMEOUT_MS);
+      waitTimer.unref?.();
     }
   });
 
@@ -66,6 +123,25 @@ async function main(): Promise<void> {
       reason: String(message.payload.reason ?? '')
     });
 
+    pendingHandlerCtx = ctx;
+    void tryCommit(ctx);
+  });
+
+  participant.on('Vote', (message: IncomingMessage, ctx: HandlerContext) => {
+    if (!message.proposalId || message.sender === participantId) return;
+
+    const voteValue = String(message.payload.vote ?? '').toUpperCase();
+    const recommendation = voteValue === 'APPROVE' ? 'APPROVE' : voteValue === 'ABSTAIN' ? 'REVIEW' : 'BLOCK';
+
+    signals.set(message.sender, {
+      participantId: message.sender,
+      messageType: 'Evaluation',
+      recommendation,
+      confidence: 1.0,
+      reason: String(message.payload.reason ?? `vote=${voteValue}`)
+    });
+
+    pendingHandlerCtx = ctx;
     void tryCommit(ctx);
   });
 
@@ -79,12 +155,23 @@ async function main(): Promise<void> {
       reason: String(message.payload.reason ?? '')
     });
 
+    pendingHandlerCtx = ctx;
     void tryCommit(ctx);
   });
 
-  async function tryCommit(ctx: HandlerContext): Promise<void> {
+  async function tryCommit(ctx: HandlerContext, force = false): Promise<void> {
     if (committed || !proposalId) return;
+    // Wait for ALL declared specialists before committing, unless the
+    // wait-all deadline forced us through. The strategy's quorum check
+    // remains as a defensive lower-bound (avoids committing with zero
+    // signals on the deadline path).
+    if (!force && signals.size < recipients.length) return;
     if (!strategy.isQuorumMet(signals, recipients.length)) return;
+
+    if (waitTimer) {
+      clearTimeout(waitTimer);
+      waitTimer = undefined;
+    }
 
     committed = true;
     const sessionContext = (bootstrap.metadata?.session_context ?? {}) as Record<string, unknown>;

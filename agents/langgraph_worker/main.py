@@ -7,14 +7,84 @@ stream and emit responses directly. No control-plane polling.
 
 import json
 import os
+import time
 import logging
 
 from macp_sdk.agent import from_bootstrap
+from macp_sdk.envelope import build_envelope, serialize_message
+from macp_sdk.errors import MacpAckError
+from macp.v1 import core_pb2
 
 from graph import build_graph
 from mappers import map_kickoff_to_state
 
 logger = logging.getLogger("macp.agent")
+
+_TERMINAL_ACK_CODES = ("SESSION_NOT_OPEN", "UNKNOWN_SESSION", "TTL_EXPIRED")
+
+
+def _is_session_closed(err: MacpAckError) -> bool:
+    msg = str(err).upper()
+    return any(code in msg for code in _TERMINAL_ACK_CODES)
+
+
+def _safe_emit(actions, message_type: str, payload):
+    """Send Signal/Progress envelope; swallow session-closed races silently."""
+    try:
+        env = build_envelope(
+            mode=getattr(actions, "_mode", "") or "",
+            message_type=message_type,
+            session_id=getattr(actions, "_session_id", "") or "",
+            sender=getattr(actions, "_participant_id", "") or "",
+            payload=serialize_message(payload),
+        )
+        actions.send_envelope(env)
+    except MacpAckError as err:
+        if _is_session_closed(err):
+            return
+        logger.warning("%s emit failed: %s", message_type, err)
+    except Exception as err:  # noqa: BLE001 - never crash the worker over telemetry
+        logger.warning("%s emit failed: %s", message_type, err)
+
+
+def emit_progress(actions, progress: float, message: str = "") -> None:
+    payload = core_pb2.ProgressPayload(
+        progress=max(0.0, min(1.0, float(progress))),
+        message=str(message),
+    )
+    _safe_emit(actions, "Progress", payload)
+
+
+def emit_signal(actions, signal_type: str, data: dict | None = None, confidence: float = 1.0) -> None:
+    """Emit an ambient Signal envelope.
+
+    Per RFC-MACP-0001, Signal envelopes must have empty session_id and empty mode
+    at the envelope level — correlation back to a session is via the payload's
+    `correlation_session_id` field. The runtime rejects Signal envelopes that
+    include session_id/mode at the envelope layer.
+    """
+    data_bytes = json.dumps(data).encode("utf-8") if data else b""
+    payload = core_pb2.SignalPayload(
+        signal_type=str(signal_type),
+        data=data_bytes,
+        confidence=float(confidence),
+        correlation_session_id=getattr(actions, "_session_id", "") or "",
+    )
+    try:
+        env = build_envelope(
+            mode="",
+            message_type="Signal",
+            session_id="",
+            sender=getattr(actions, "_participant_id", "") or "",
+            payload=serialize_message(payload),
+        )
+        actions.send_envelope(env)
+    except MacpAckError as err:
+        if _is_session_closed(err):
+            return
+        logger.warning("Signal emit failed: %s", err)
+    except Exception as err:  # noqa: BLE001
+        logger.warning("Signal emit failed: %s", err)
 
 
 def _load_session_context() -> dict:
@@ -32,21 +102,77 @@ def main() -> int:
     session_context = _load_session_context()
 
     def handle_proposal(message, ctx):
+        emit_signal(
+            ctx.actions,
+            "session.started",
+            {"role": "claims-validator", "framework": "langgraph", "agentRef": "fraud-agent"},
+        )
+        emit_progress(ctx.actions, 0.10, "received proposal")
+
+        emit_progress(ctx.actions, 0.30, "running fraud analysis graph")
         graph_input = map_kickoff_to_state(session_context)
+        t0 = time.time()
         graph_output = graph.invoke(graph_input)
+        latency_ms = int((time.time() - t0) * 1000)
+
+        recommendation = str(graph_output.get("recommendation", "REVIEW")).upper()
+        confidence = float(graph_output.get("confidence", 0.5))
+        reason = str(graph_output.get("reason", "fraud graph evaluation"))[:500]
+        proposal_id = message.proposal_id or ""
+        token_usage = graph_output.get("token_usage") or {}
+
+        prompt_tokens = int(token_usage.get("promptTokens") or token_usage.get("prompt_tokens") or 0)
+        completion_tokens = int(token_usage.get("completionTokens") or token_usage.get("completion_tokens") or 0)
+        model = str(token_usage.get("model") or "gpt-4o-mini")
 
         logger.info(
-            "graph execution complete recommendation=%s confidence=%s",
-            graph_output.get("recommendation"),
-            graph_output.get("confidence"),
+            "graph execution complete recommendation=%s confidence=%s tokens=%d/%d latency=%dms",
+            recommendation,
+            confidence,
+            prompt_tokens,
+            completion_tokens,
+            latency_ms,
         )
 
-        ctx.actions.evaluate(
-            message.proposal_id or "",
-            graph_output.get("recommendation", "REVIEW"),
-            confidence=graph_output.get("confidence", 0.5),
-            reason=graph_output.get("reason", "fraud graph evaluation"),
+        emit_signal(
+            ctx.actions,
+            "llm.call.completed",
+            {
+                "model": model,
+                "provider": "openai",
+                "promptTokens": prompt_tokens,
+                "completionTokens": completion_tokens,
+                "totalTokens": prompt_tokens + completion_tokens,
+                "latencyMs": latency_ms,
+                "tokenUsage": {
+                    "promptTokens": prompt_tokens,
+                    "completionTokens": completion_tokens,
+                    "model": model,
+                },
+                "participantId": "fraud-agent",
+                "summary": f"recommendation={recommendation} confidence={confidence:.2f}",
+            },
         )
+
+        vote = "APPROVE" if recommendation in ("APPROVE", "ALLOW", "REVIEW") else "REJECT"
+        emit_progress(ctx.actions, 0.75, f"voting {vote}")
+
+        try:
+            ctx.actions.vote(proposal_id, vote, reason=reason)
+            logger.info("vote sent proposalId=%s vote=%s recommendation=%s", proposal_id, vote, recommendation)
+        except MacpAckError as err:
+            if _is_session_closed(err):
+                logger.info("fraud vote skipped — session already closed proposalId=%s err=%s", proposal_id, err)
+            else:
+                raise
+
+        emit_progress(ctx.actions, 1.0, "complete")
+        emit_signal(
+            ctx.actions,
+            "session.ended",
+            {"vote": vote, "recommendation": recommendation, "participantId": "fraud-agent"},
+        )
+
         participant.stop()
 
     participant.on("Proposal", handle_proposal)
