@@ -26,18 +26,11 @@ jest.mock('macp-sdk-typescript', () => ({
 
 // ── worker-side mocks ────────────────────────────────────────────────
 const mockLoadBootstrap = jest.fn();
-const mockStartCancelServer = jest.fn((..._args: unknown[]) =>
-  Promise.resolve({ address: 'http://127.0.0.1:0/agent/cancel', close: () => Promise.resolve() })
-);
 
 jest.mock('./bootstrap-loader', () => ({
   loadBootstrapPayload: () => mockLoadBootstrap(),
   hasDirectRuntimeIdentity: (b: BootstrapPayload) => Boolean(b.runtime_url && b.auth_token),
   isInitiator: (b: BootstrapPayload) => Boolean(b.initiator)
-}));
-
-jest.mock('./cancel-callback-server', () => ({
-  startCancelCallbackServer: (opts: unknown) => mockStartCancelServer(opts)
 }));
 
 // ── helpers ─────────────────────────────────────────────────────────
@@ -93,17 +86,6 @@ describe('risk-decider.worker (SDK Participant)', () => {
 
   afterEach(() => {
     jest.useRealTimers();
-  });
-
-  it('starts cancel-callback server when bootstrap has cancel_callback', async () => {
-    mockLoadBootstrap.mockReturnValue(defaultBootstrap());
-
-    await runWorker();
-    await jest.advanceTimersByTimeAsync(500);
-
-    expect(mockStartCancelServer).toHaveBeenCalledWith(
-      expect.objectContaining({ host: '127.0.0.1', path: '/agent/cancel' })
-    );
   });
 
   it('registers Proposal, Evaluation, and Objection handlers', async () => {

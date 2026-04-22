@@ -126,9 +126,9 @@ terminal state. Each handler receives `(message, ctx)` — `message` carries
 the canonical envelope fields, `ctx.actions` exposes `evaluate / vote /
 commit / objection` against the agent's own authenticated runtime channel.
 
-## Step 5: Create a Manifest (Optional)
+## Step 5: Create a Manifest
 
-Create `agents/manifests/my-agent.json`. Manifests are loaded via `loadManifest()` and are optional — agents work without a manifest file but fall back to legacy launch mode.
+Create `agents/manifests/my-agent.json`. Manifests are required — `loadManifest()` throws `INVALID_CONFIG` at service startup if the file is missing.
 
 
 

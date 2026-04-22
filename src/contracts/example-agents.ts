@@ -56,10 +56,9 @@ export interface ExampleAgentRunContext {
   runId: string;
   /**
    * Pre-allocated shared session id (UUID v4) that every agent in the run
-   * receives via its bootstrap. Populated when examples-service owns session
-   * id allocation (direct-agent-auth); may be empty during legacy launches.
+   * receives via its bootstrap. Examples-service owns allocation.
    */
-  sessionId?: string;
+  sessionId: string;
   traceId?: string;
   scenarioRef: string;
   modeName: string;

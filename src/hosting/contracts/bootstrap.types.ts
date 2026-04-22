@@ -15,8 +15,8 @@ export interface BootstrapPayload {
   mode: string;
   /** gRPC address of the MACP runtime (e.g. `runtime.local:50051`). */
   runtime_url: string;
-  /** Bearer token for this agent's runtime identity. */
-  auth_token?: string;
+  /** Bearer token for this agent's runtime identity. Always populated (JWT minted per spawn). */
+  auth_token: string;
   /** Dev-only: agent identity header value (requires `MACP_ALLOW_DEV_SENDER_HEADER=1`). */
   agent_id?: string;
   /** Enable TLS for the runtime gRPC channel. Defaults to true in production. */

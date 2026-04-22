@@ -53,7 +53,7 @@ export async function runDryRun(opts: DryRunOptions): Promise<number> {
       mode: opts.mode
     });
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify(result.executionRequest, null, 2));
+    console.log(JSON.stringify(result, null, 2));
     return 0;
   } catch (err) {
     if (err instanceof AppException) {

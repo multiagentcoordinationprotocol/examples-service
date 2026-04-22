@@ -107,7 +107,7 @@ spec:
       errSpy.mockRestore();
     });
 
-    it('compiles a fraud scenario and prints an ExecutionRequest with !include-inlined commitments', async () => {
+    it('compiles a fraud scenario and prints a CompileLaunchResult with !include-inlined metadata', async () => {
       const tmpInputs = path.join(os.tmpdir(), `inputs-${Date.now()}.json`);
       fs.writeFileSync(
         tmpInputs,
@@ -129,10 +129,10 @@ spec:
         expect(code).toBe(0);
 
         const printed = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-        const er = JSON.parse(printed);
-        expect(er.session.commitments).toHaveLength(2);
-        expect(er.session.commitments[0].id).toBe('fraud-risk-assessed');
-        expect(er.session.context.transactionAmount).toBe(3200);
+        const compileResult = JSON.parse(printed);
+        expect(compileResult.runDescriptor.session.modeName).toBe('macp.mode.decision.v1');
+        expect(compileResult.runDescriptor.session.participants).toHaveLength(4);
+        expect(compileResult.scenarioMeta.sessionContext.transactionAmount).toBe(3200);
       } finally {
         fs.unlinkSync(tmpInputs);
       }
@@ -273,9 +273,12 @@ spec:
           FIXTURES_PACKS
         ]);
         expect(result.code).toBe(0);
-        const er = JSON.parse(result.stdout);
-        expect(er.mode).toBe('sandbox');
-        expect(er.session.commitments).toBeDefined();
+        const compileResult = JSON.parse(result.stdout);
+        expect(compileResult.mode).toBe('sandbox');
+        expect(compileResult.runDescriptor.session.modeName).toBe('macp.mode.decision.v1');
+        expect(compileResult.sessionId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        );
       } finally {
         fs.unlinkSync(tmpInputs);
       }

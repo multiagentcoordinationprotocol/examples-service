@@ -1,5 +1,5 @@
 import { createIntegrationTestApp, IntegrationTestContext } from '../helpers/integration-test-app';
-import { fraudScenarioCompileRequest, fraudScenarioRunRequest } from '../fixtures/integration-requests';
+import { fraudScenarioCompileRequest } from '../fixtures/integration-requests';
 
 describe('Scenario authoring (integration)', () => {
   let ctx: IntegrationTestContext;
@@ -19,46 +19,21 @@ describe('Scenario authoring (integration)', () => {
   });
 
   describe('!include propagation through HTTP path', () => {
-    it('inlines _shared/commitments/fraud.yaml on /launch/compile', async () => {
+    it('inlines _shared/metadata fragments through compile', async () => {
+      // The fraud fixture's `metadataTemplate` uses `!include` to pull in a
+      // shared fragment at load time. Compile resolves it and surfaces the
+      // inlined values in runDescriptor.session.metadata.
       const result = (await ctx.client.compile(fraudScenarioCompileRequest())) as any;
-      expect(result.executionRequest.session.commitments).toEqual([
-        {
-          id: 'fraud-risk-assessed',
-          title: 'Fraud risk assessed',
-          description:
-            'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
-          requiredRoles: ['fraud'],
-          policyRef: 'policy.default'
-        },
-        {
-          id: 'decision-finalized',
-          title: 'Decision finalized',
-          description: 'Risk coordinator has reconciled inputs and committed a final decision.',
-          requiredRoles: ['risk']
-        }
-      ]);
-    });
-
-    it('keeps inlined commitments inside executionRequest and strips them from runDescriptor', async () => {
-      const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
-
-      // Commitments resolved from !include DO appear on executionRequest
-      // (the scenario-layer artifact consumed by agents via bootstrap).
-      const compiledCommitments = result.compiled.executionRequest.session.commitments;
-      expect(compiledCommitments).toHaveLength(2);
-      expect(compiledCommitments[0].id).toBe('fraud-risk-assessed');
-
-      // But they MUST NOT appear on the scenario-agnostic runDescriptor.
-      const descriptor = result.compiled.runDescriptor;
-      const descriptorSession = descriptor.session as Record<string, unknown>;
-      expect(descriptorSession.commitments).toBeUndefined();
+      const metadata = result.runDescriptor.session.metadata;
+      expect(metadata.source).toBe('example-service');
+      expect(metadata.scenarioRef).toBe('fraud/high-value-new-device@1.0.0');
     });
 
     it('produces identical compiled output for repeated calls (loader is deterministic with includes)', async () => {
       const a = (await ctx.client.compile(fraudScenarioCompileRequest())) as any;
       const b = (await ctx.client.compile(fraudScenarioCompileRequest())) as any;
-      expect(a.executionRequest.session.commitments).toEqual(b.executionRequest.session.commitments);
-      expect(a.executionRequest.session.participants).toEqual(b.executionRequest.session.participants);
+      expect(a.runDescriptor.session.participants).toEqual(b.runDescriptor.session.participants);
+      expect(a.scenarioMeta.sessionContext).toEqual(b.scenarioMeta.sessionContext);
     });
   });
 });

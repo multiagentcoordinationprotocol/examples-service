@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as path from 'node:path';
 import { AppModule } from '../../src/app.module';
 import { AppConfigService } from '../../src/config/app-config.service';
+import { AuthTokenMinterService } from '../../src/auth/auth-token-minter.service';
 import { GlobalExceptionFilter } from '../../src/errors/exception.filter';
 import { MockControlPlane } from './mock-control-plane';
 import { IntegrationTestClient } from './integration-test-client';
@@ -28,10 +29,15 @@ export async function createIntegrationTestApp(
     autoBootstrapExampleAgents: boolean;
     authApiKeys: string[];
     mockControlPlaneOptions: { requiredBearerToken?: string };
-    agentRuntimeTokens: Record<string, string>;
     runtimeAddress: string;
     runtimeTls: boolean;
     runtimeAllowInsecure: boolean;
+    authServiceUrl: string;
+    authServiceTimeoutMs: number;
+    authTokenTtlSeconds: number;
+    authScopeOverrides: Record<string, Record<string, unknown>>;
+    /** Set to false to use the real AuthTokenMinterService (and hit authServiceUrl over HTTP). */
+    stubAuthMinter: boolean;
   }>
 ): Promise<IntegrationTestContext> {
   const controlPlaneMode = (process.env.INTEGRATION_CONTROL_PLANE ?? 'mock') as ControlPlaneMode;
@@ -53,10 +59,25 @@ export async function createIntegrationTestApp(
     mockControlPlane = null;
   }
 
-  const agentRuntimeTokens = overrides?.agentRuntimeTokens ?? {};
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule]
-  })
+  let builder = Test.createTestingModule({ imports: [AppModule] });
+
+  if (overrides?.stubAuthMinter !== false) {
+    builder = builder.overrideProvider(AuthTokenMinterService).useValue({
+      mintToken: async (sender: string) => ({
+        token: `jwt-${sender}-integration`,
+        sender,
+        expiresAt: Date.now() + 3600_000,
+        expiresInSeconds: 3600,
+        cacheOutcome: 'miss' as const
+      }),
+      mergeScopes: (base: Record<string, unknown>, override?: Record<string, unknown>) => ({
+        ...base,
+        ...(override ?? {})
+      })
+    });
+  }
+
+  const moduleRef = await builder
     .overrideProvider(AppConfigService)
     .useValue({
       packsDir: fixturesPacksDir,
@@ -74,15 +95,16 @@ export async function createIntegrationTestApp(
       exampleAgentPythonPath: 'python3',
       exampleAgentNodePath: process.execPath,
       authApiKeys: overrides?.authApiKeys ?? [],
-      agentRuntimeTokens,
       runtimeAddress: overrides?.runtimeAddress ?? '',
       runtimeTls: overrides?.runtimeTls ?? true,
       runtimeAllowInsecure: overrides?.runtimeAllowInsecure ?? false,
       cancelCallbackHost: '127.0.0.1',
       cancelCallbackPortBase: 0,
       cancelCallbackPath: '/agent/cancel',
-      resolveAgentToken: (senderOrAgentRef: string | undefined): string | undefined =>
-        senderOrAgentRef ? agentRuntimeTokens[senderOrAgentRef] : undefined
+      authServiceUrl: overrides?.authServiceUrl ?? 'http://auth-stub:3200',
+      authServiceTimeoutMs: overrides?.authServiceTimeoutMs ?? 5000,
+      authTokenTtlSeconds: overrides?.authTokenTtlSeconds ?? 3600,
+      authScopeOverrides: overrides?.authScopeOverrides ?? {}
     })
     .compile();
 

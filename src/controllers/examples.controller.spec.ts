@@ -21,7 +21,10 @@ describe('ExamplesController', () => {
       };
       const mockResult = {
         compiled: {
-          executionRequest: {},
+          runDescriptor: {},
+          sessionId: 'sess-1',
+          mode: 'sandbox',
+          scenarioMeta: {},
           display: { title: 'Test', scenarioRef: 'fraud/test@1.0.0' },
           participantBindings: []
         },

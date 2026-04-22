@@ -9,16 +9,25 @@ import { AgentManifest } from '../hosting/contracts/manifest.types';
 
 const FRAUD_SCENARIO = 'fraud/high-value-new-device@1.0.0';
 
-function loadManifest(relativePath: string): AgentManifest | undefined {
+function loadManifest(relativePath: string): AgentManifest {
   const absolutePath = path.resolve(process.cwd(), relativePath);
-  try {
-    if (fs.existsSync(absolutePath)) {
-      return JSON.parse(fs.readFileSync(absolutePath, 'utf-8')) as AgentManifest;
-    }
-  } catch {
-    // manifest loading is optional; fall back to legacy mode
+  if (!fs.existsSync(absolutePath)) {
+    throw new AppException(
+      ErrorCode.INVALID_CONFIG,
+      `example agent manifest missing: ${relativePath} (resolved: ${absolutePath})`,
+      HttpStatus.INTERNAL_SERVER_ERROR
+    );
   }
-  return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(absolutePath, 'utf-8')) as AgentManifest;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new AppException(
+      ErrorCode.INVALID_CONFIG,
+      `example agent manifest unreadable: ${relativePath} (${message})`,
+      HttpStatus.INTERNAL_SERVER_ERROR
+    );
+  }
 }
 
 const EXAMPLE_AGENT_DEFINITIONS: ExampleAgentDefinition[] = [
@@ -116,8 +125,7 @@ export class ExampleAgentCatalogService {
   );
 
   constructor() {
-    const manifested = EXAMPLE_AGENT_DEFINITIONS.filter((d) => d.manifest).length;
-    this.logger.log(`loaded ${EXAMPLE_AGENT_DEFINITIONS.length} agent definitions (${manifested} with manifests)`);
+    this.logger.log(`loaded ${EXAMPLE_AGENT_DEFINITIONS.length} agent definitions`);
   }
 
   list(): ExampleAgentDefinition[] {

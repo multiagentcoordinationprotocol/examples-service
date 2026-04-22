@@ -4,18 +4,17 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { GlobalExceptionFilter } from '../../src/errors/exception.filter';
-import { buildE2eConfig } from './e2e-config';
+import { buildE2eConfig, stubAuthMinter } from './e2e-config';
 
 describe('Launch (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule]
-    })
-      .overrideProvider(AppConfigService)
-      .useValue(buildE2eConfig())
-      .compile();
+    const moduleFixture: TestingModule = await stubAuthMinter(
+      Test.createTestingModule({
+        imports: [AppModule]
+      }).overrideProvider(AppConfigService).useValue(buildE2eConfig())
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalFilters(new GlobalExceptionFilter());
@@ -102,39 +101,23 @@ describe('Launch (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          expect(res.body.executionRequest).toBeDefined();
-          expect(res.body.executionRequest.mode).toBe('sandbox');
-          expect(res.body.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
-          expect(res.body.executionRequest.session.modeName).toBe('macp.mode.decision.v1');
-          expect(res.body.executionRequest.session.policyVersion).toBe('policy.default');
-          expect(res.body.executionRequest.session.policyHints).toEqual({
+          expect(res.body.runDescriptor).toBeDefined();
+          expect(res.body.mode).toBe('sandbox');
+          expect(res.body.runDescriptor.runtime).toEqual({ kind: 'rust', version: 'v1' });
+          expect(res.body.runDescriptor.session.modeName).toBe('macp.mode.decision.v1');
+          expect(res.body.runDescriptor.session.policyVersion).toBe('policy.default');
+          expect(res.body.scenarioMeta.policyHints).toEqual({
             type: 'none',
             description: 'Default policy — no additional governance constraints',
             vetoThreshold: 1,
             minimumConfidence: 0,
             designatedRoles: []
           });
-          expect(res.body.executionRequest.session.participants).toHaveLength(4);
-          expect(res.body.executionRequest.session.commitments).toEqual([
-            {
-              id: 'fraud-risk-assessed',
-              title: 'Fraud risk assessed',
-              description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
-              requiredRoles: ['fraud'],
-              policyRef: 'policy.default'
-            },
-            {
-              id: 'decision-finalized',
-              title: 'Decision finalized',
-              description: 'Risk coordinator has reconciled inputs and committed a final decision.',
-              requiredRoles: ['risk']
-            }
-          ]);
-          expect(res.body.executionRequest.session.context.transactionAmount).toBe(3200);
-          expect(res.body.executionRequest.session.context.isVipCustomer).toBe(true);
-          expect(res.body.executionRequest.session.metadata.source).toBe('example-service');
-          expect(res.body.executionRequest.kickoff).toHaveLength(1);
-          expect(res.body.executionRequest.kickoff[0].messageType).toBe('Proposal');
+          expect(res.body.runDescriptor.session.participants).toHaveLength(4);
+          expect(res.body.scenarioMeta.sessionContext.transactionAmount).toBe(3200);
+          expect(res.body.scenarioMeta.sessionContext.isVipCustomer).toBe(true);
+          expect(res.body.runDescriptor.session.metadata.source).toBe('example-service');
+          expect(res.body.initiator.kickoff.messageType).toBe('Proposal');
           expect(res.body.participantBindings).toHaveLength(4);
           expect(res.body.display.title).toBe('High Value Purchase From New Device');
         });
@@ -204,7 +187,7 @@ describe('Launch (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          expect(res.body.compiled.executionRequest).toBeDefined();
+          expect(res.body.compiled.runDescriptor).toBeDefined();
           expect(res.body.hostedAgents).toHaveLength(4);
           expect(res.body.hostedAgents[0].transportIdentity).toContain('agent://');
           expect(res.body.hostedAgents[2].framework).toBe('crewai');
@@ -212,44 +195,7 @@ describe('Launch (e2e)', () => {
         });
     });
 
-    it('inlines !include fragments at load time (commitments come from _shared/)', () => {
-      // The fraud fixture's `commitments:` block uses `!include ../../../../_shared/commitments/fraud.yaml`.
-      // Asserting the compiled request shows the fully-inlined array proves the loader resolved the
-      // include path during pack discovery and cached the result on the in-memory snapshot.
-      return request(app.getHttpServer())
-        .post('/examples/run')
-        .send({
-          scenarioRef: 'fraud/high-value-new-device@1.0.0',
-          submitToControlPlane: false,
-          inputs: {
-            transactionAmount: 3200,
-            deviceTrustScore: 0.12,
-            accountAgeDays: 5,
-            isVipCustomer: true,
-            priorChargebacks: 1
-          }
-        })
-        .expect(201)
-        .expect((res: any) => {
-          expect(res.body.compiled.executionRequest.session.commitments).toEqual([
-            {
-              id: 'fraud-risk-assessed',
-              title: 'Fraud risk assessed',
-              description: 'Fraud specialist has evaluated transaction signals and recorded a risk verdict.',
-              requiredRoles: ['fraud'],
-              policyRef: 'policy.default'
-            },
-            {
-              id: 'decision-finalized',
-              title: 'Decision finalized',
-              description: 'Risk coordinator has reconciled inputs and committed a final decision.',
-              requiredRoles: ['risk']
-            }
-          ]);
-        });
-    });
-
-    it('should merge tags, requester, and runLabel into execution request', () => {
+    it('should merge tags, requester, and runLabel into run descriptor', () => {
       return request(app.getHttpServer())
         .post('/examples/run')
         .send({
@@ -268,14 +214,14 @@ describe('Launch (e2e)', () => {
         })
         .expect(201)
         .expect((res: any) => {
-          const execution = res.body.compiled.executionRequest.execution;
+          const execution = res.body.compiled.runDescriptor.execution;
           expect(execution.tags).toContain('ui-launch');
           expect(execution.tags).toContain('experiment-1');
           expect(execution.tags).toContain('example');
           expect(execution.requester.actorId).toBe('tester@example.com');
           expect(execution.requester.actorType).toBe('user');
 
-          const metadata = res.body.compiled.executionRequest.session.metadata;
+          const metadata = res.body.compiled.runDescriptor.session.metadata;
           expect(metadata.runLabel).toBe('E2E test run');
         });
     });

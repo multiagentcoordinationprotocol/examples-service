@@ -1,5 +1,5 @@
 import { HostedExampleAgent, ParticipantAgentBinding, ExampleAgentSummary } from './example-agents';
-import { CommitmentDefinition, KickoffKind, PayloadEnvelopeTemplate, RuntimeSelectionTemplate } from './registry';
+import { CommitmentDefinition, PayloadEnvelopeTemplate, RuntimeSelectionTemplate } from './registry';
 import { RunDescriptor } from './run-descriptor';
 
 export type { CommitmentDefinition };
@@ -48,59 +48,6 @@ export interface CompileLaunchRequest {
   mode?: 'live' | 'sandbox';
 }
 
-export interface ExecutionRequest {
-  mode: 'live' | 'sandbox';
-  runtime: {
-    kind: string;
-    version?: string;
-  };
-  session: {
-    modeName: string;
-    modeVersion: string;
-    configurationVersion: string;
-    policyVersion?: string;
-    policyHints?: {
-      type?: string;
-      description?: string;
-      threshold?: number;
-      vetoEnabled?: boolean;
-      criticalSeverityVetoes?: boolean;
-      vetoRoles?: string[];
-      vetoThreshold?: number;
-      minimumConfidence?: number;
-      designatedRoles?: string[];
-    };
-    ttlMs: number;
-    initiatorParticipantId?: string;
-    participants: Array<{
-      id: string;
-      role?: string;
-      transportIdentity?: string;
-      metadata?: Record<string, unknown>;
-    }>;
-    commitments?: CommitmentDefinition[];
-    context?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  };
-  kickoff?: Array<{
-    from: string;
-    to: string[];
-    kind: KickoffKind;
-    messageType: string;
-    payload?: Record<string, unknown>;
-    payloadEnvelope?: PayloadEnvelope;
-    metadata?: Record<string, unknown>;
-  }>;
-  execution?: {
-    idempotencyKey?: string;
-    tags?: string[];
-    requester?: {
-      actorId?: string;
-      actorType?: 'user' | 'service' | 'system';
-    };
-  };
-}
-
 /**
  * Initiator-only compile output: the payload the initiator agent needs to
  * emit the first SessionStart envelope and the first mode-specific envelope
@@ -128,19 +75,38 @@ export interface InitiatorPayload {
   };
 }
 
+/**
+ * Examples-service internal scenario metadata. Not part of the CP-1 wire
+ * contract — fields here are consumed by the hosting flow when threading
+ * policy + context into each agent's bootstrap.
+ */
+export interface ScenarioMeta {
+  policyHints?: {
+    type?: string;
+    description?: string;
+    threshold?: number;
+    vetoEnabled?: boolean;
+    criticalSeverityVetoes?: boolean;
+    vetoRoles?: string[];
+    vetoThreshold?: number;
+    minimumConfidence?: number;
+    designatedRoles?: string[];
+  };
+  sessionContext?: Record<string, unknown>;
+  initiatorParticipantId?: string;
+}
+
 export interface CompileLaunchResult {
-  /**
-   * Legacy control-plane contract. Retained verbatim until CP-1 lands; after
-   * that, this collapses into a thin adapter over `runDescriptor` + the
-   * initiator payload.
-   */
-  executionRequest: ExecutionRequest;
-  /** Forward-compatible generic descriptor for `POST /runs` (CP-1). */
+  /** Scenario-agnostic descriptor — the sole wire contract. */
   runDescriptor: RunDescriptor;
   /** Present iff the scenario has a kickoff and an identifiable initiator. */
   initiator?: InitiatorPayload;
   /** Shared session id pre-allocated at compile time (UUID v4). */
   sessionId: string;
+  /** Execution mode chosen at request time — not part of the runtime contract. */
+  mode: 'live' | 'sandbox';
+  /** Examples-service internal scenario metadata consumed by hosting. */
+  scenarioMeta: ScenarioMeta;
   display: {
     title: string;
     scenarioRef: string;

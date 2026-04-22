@@ -12,13 +12,11 @@ const { fromBootstrap } = agent;
 type IncomingMessage = agent.IncomingMessage;
 type HandlerContext = agent.HandlerContext;
 import { loadBootstrapPayload } from './bootstrap-loader';
-import { startCancelCallbackServer, type CancelCallbackServer } from './cancel-callback-server';
+import { logAgent } from './log-agent';
 import { createPolicyStrategy, type SpecialistSignal } from './policy-strategy';
 
 function log(msg: string, details?: Record<string, unknown>): void {
-  const payload = details ? ` ${JSON.stringify(details)}` : '';
-  // eslint-disable-next-line no-console
-  console.log(`[risk-decider] ${msg}${payload}`);
+  logAgent(`[risk-decider] ${msg}`, details);
 }
 
 function inferOutcomePositive(action: string): boolean {
@@ -34,21 +32,10 @@ async function main(): Promise<void> {
   const participantId = bootstrap.participant_id;
   const recipients = participants.filter((p) => p !== participantId);
 
+  // macp-sdk-typescript@0.3.0 reads bootstrap.cancel_callback itself and
+  // auto-starts the HTTP listener that POSTs a cancel signal into
+  // participant.stop() — no local hand-rolled server needed.
   const participant = fromBootstrap();
-
-  let cancelServer: CancelCallbackServer | undefined;
-  if (bootstrap.cancel_callback) {
-    cancelServer = await startCancelCallbackServer({
-      host: bootstrap.cancel_callback.host,
-      port: bootstrap.cancel_callback.port,
-      path: bootstrap.cancel_callback.path,
-      onCancel: async ({ reason }) => {
-        log('cancel callback received', { reason });
-        await participant.stop();
-      }
-    });
-    log('cancel callback listening', { address: cancelServer.address });
-  }
 
   log('risk coordinator started', {
     participantId,
@@ -143,11 +130,7 @@ async function main(): Promise<void> {
     log('session reached terminal state');
   });
 
-  try {
-    await participant.run();
-  } finally {
-    await cancelServer?.close();
-  }
+  await participant.run();
 
   log('risk coordinator finished', { participantId });
 }

@@ -1,4 +1,4 @@
-import { AppConfigService, readBoolean, readNumber, readStringList, readStringMap } from './app-config.service';
+import { AppConfigService, readBoolean, readNumber, readStringList } from './app-config.service';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 
@@ -88,82 +88,12 @@ describe('readStringList', () => {
   });
 });
 
-describe('readStringMap', () => {
-  const original = process.env;
-
-  beforeEach(() => {
-    process.env = { ...original };
-  });
-
-  afterAll(() => {
-    process.env = original;
-  });
-
-  it('returns empty map when env var is not set', () => {
-    delete process.env.TEST_MAP;
-    expect(readStringMap('TEST_MAP')).toEqual({});
-  });
-
-  it('returns empty map for empty string', () => {
-    process.env.TEST_MAP = '';
-    expect(readStringMap('TEST_MAP')).toEqual({});
-  });
-
-  it('parses a JSON object of string→string', () => {
-    process.env.TEST_MAP = '{"risk-agent":"tok-risk","fraud-agent":"tok-fraud"}';
-    expect(readStringMap('TEST_MAP')).toEqual({
-      'risk-agent': 'tok-risk',
-      'fraud-agent': 'tok-fraud'
-    });
-  });
-
-  it('throws AppException(INVALID_CONFIG) on invalid JSON', () => {
-    process.env.TEST_MAP = 'not-json';
-    try {
-      readStringMap('TEST_MAP');
-      fail('should have thrown');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppException);
-      expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
-      expect((err as AppException).message).toMatch(/must be valid JSON/);
-    }
-  });
-
-  it('throws AppException(INVALID_CONFIG) when JSON is an array', () => {
-    process.env.TEST_MAP = '["a","b"]';
-    try {
-      readStringMap('TEST_MAP');
-      fail('should have thrown');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppException);
-      expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
-      expect((err as AppException).message).toMatch(/must be a JSON object/);
-    }
-  });
-
-  it('throws AppException(INVALID_CONFIG) when value is not a non-empty string', () => {
-    process.env.TEST_MAP = '{"risk-agent":""}';
-    try {
-      readStringMap('TEST_MAP');
-      fail('should have thrown');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppException);
-      expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
-      expect((err as AppException).message).toMatch(/must be a non-empty string/);
-    }
-  });
-
-  it('drops empty keys but keeps valid entries', () => {
-    process.env.TEST_MAP = '{"":"nope","risk":"tok"}';
-    expect(readStringMap('TEST_MAP')).toEqual({ risk: 'tok' });
-  });
-});
-
 describe('AppConfigService', () => {
   const original = process.env;
 
   beforeEach(() => {
     process.env = { ...original };
+    process.env.MACP_AUTH_SERVICE_URL = 'http://auth:3200';
   });
 
   afterAll(() => {
@@ -175,7 +105,6 @@ describe('AppConfigService', () => {
     delete process.env.HOST;
     delete process.env.PACKS_DIR;
     delete process.env.REGISTRY_CACHE_TTL_MS;
-    delete process.env.EXAMPLES_SERVICE_AGENT_TOKENS_JSON;
     delete process.env.MACP_RUNTIME_ADDRESS;
     delete process.env.MACP_RUNTIME_TLS;
     delete process.env.MACP_RUNTIME_ALLOW_INSECURE;
@@ -184,7 +113,6 @@ describe('AppConfigService', () => {
     expect(config.host).toBe('0.0.0.0');
     expect(config.packsDir).toBe('./packs');
     expect(config.registryCacheTtlMs).toBe(0);
-    expect(config.agentRuntimeTokens).toEqual({});
     expect(config.runtimeAddress).toBe('');
     expect(config.runtimeTls).toBe(true);
     expect(config.runtimeAllowInsecure).toBe(false);
@@ -200,21 +128,6 @@ describe('AppConfigService', () => {
     expect(config.registryCacheTtlMs).toBe(60000);
   });
 
-  it('loads agentRuntimeTokens from EXAMPLES_SERVICE_AGENT_TOKENS_JSON', () => {
-    process.env.EXAMPLES_SERVICE_AGENT_TOKENS_JSON =
-      '{"risk-agent":"tok-risk","fraud-agent":"tok-fraud","growth-agent":"tok-growth","compliance-agent":"tok-comp"}';
-    const config = new AppConfigService();
-    expect(Object.keys(config.agentRuntimeTokens).sort()).toEqual([
-      'compliance-agent',
-      'fraud-agent',
-      'growth-agent',
-      'risk-agent'
-    ]);
-    expect(config.resolveAgentToken('risk-agent')).toBe('tok-risk');
-    expect(config.resolveAgentToken('nobody')).toBeUndefined();
-    expect(config.resolveAgentToken(undefined)).toBeUndefined();
-  });
-
   it('honors MACP_RUNTIME_ADDRESS/TLS/ALLOW_INSECURE', () => {
     process.env.MACP_RUNTIME_ADDRESS = 'runtime.local:50051';
     process.env.MACP_RUNTIME_TLS = 'false';
@@ -223,5 +136,66 @@ describe('AppConfigService', () => {
     expect(config.runtimeAddress).toBe('runtime.local:50051');
     expect(config.runtimeTls).toBe(false);
     expect(config.runtimeAllowInsecure).toBe(true);
+  });
+
+  describe('auth config (MACP_AUTH_*)', () => {
+    it('reads auth-service URL / timeout / TTL', () => {
+      process.env.MACP_AUTH_SERVICE_URL = 'http://auth:3200';
+      process.env.MACP_AUTH_SERVICE_TIMEOUT_MS = '7500';
+      process.env.MACP_AUTH_TOKEN_TTL_SECONDS = '900';
+      const config = new AppConfigService();
+      expect(config.authServiceUrl).toBe('http://auth:3200');
+      expect(config.authServiceTimeoutMs).toBe(7500);
+      expect(config.authTokenTtlSeconds).toBe(900);
+      expect(config.authScopeOverrides).toEqual({});
+    });
+
+    it('onModuleInit throws INVALID_CONFIG when MACP_AUTH_SERVICE_URL is missing', () => {
+      delete process.env.MACP_AUTH_SERVICE_URL;
+      const config = new AppConfigService();
+      try {
+        config.onModuleInit();
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppException);
+        expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
+        expect((err as AppException).message).toMatch(/MACP_AUTH_SERVICE_URL/);
+      }
+    });
+
+    it('onModuleInit throws INVALID_CONFIG when MACP_AUTH_TOKEN_TTL_SECONDS is non-positive', () => {
+      process.env.MACP_AUTH_TOKEN_TTL_SECONDS = '0';
+      const config = new AppConfigService();
+      try {
+        config.onModuleInit();
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppException);
+        expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
+        expect((err as AppException).message).toMatch(/MACP_AUTH_TOKEN_TTL_SECONDS/);
+      }
+    });
+
+    it('parses MACP_AUTH_SCOPES_JSON per-sender overrides', () => {
+      process.env.MACP_AUTH_SCOPES_JSON =
+        '{"risk-agent":{"can_start_sessions":true},"analyst":{"is_observer":true,"allowed_modes":["macp.mode.decision.v1"]}}';
+      const config = new AppConfigService();
+      expect(config.authScopeOverrides['risk-agent']).toEqual({ can_start_sessions: true });
+      expect(config.authScopeOverrides['analyst']).toEqual({
+        is_observer: true,
+        allowed_modes: ['macp.mode.decision.v1']
+      });
+    });
+
+    it('throws INVALID_CONFIG when MACP_AUTH_SCOPES_JSON is malformed', () => {
+      process.env.MACP_AUTH_SCOPES_JSON = '[]';
+      try {
+        new AppConfigService();
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppException);
+        expect((err as AppException).errorCode).toBe(ErrorCode.INVALID_CONFIG);
+      }
+    });
   });
 });

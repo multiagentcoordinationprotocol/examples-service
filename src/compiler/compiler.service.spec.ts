@@ -102,24 +102,23 @@ describe('CompilerService', () => {
         inputs: { amount: 500, isVip: false }
       });
 
-      expect(result.executionRequest.mode).toBe('sandbox');
-      expect(result.executionRequest.runtime).toEqual({ kind: 'rust', version: 'v1' });
-      expect(result.executionRequest.session.modeName).toBe('test.mode');
-      expect(result.executionRequest.session.policyVersion).toBe('policy.default');
-      expect(result.executionRequest.session.policyHints).toEqual({
+      expect(result.mode).toBe('sandbox');
+      expect(result.runDescriptor.runtime).toEqual({ kind: 'rust', version: 'v1' });
+      expect(result.runDescriptor.session.modeName).toBe('test.mode');
+      expect(result.runDescriptor.session.policyVersion).toBe('policy.default');
+      expect(result.scenarioMeta.policyHints).toEqual({
         type: 'none',
         description: 'No governance constraints',
         vetoThreshold: 1,
         minimumConfidence: 0.0,
         designatedRoles: []
       });
-      expect(result.executionRequest.session.ttlMs).toBe(300000);
-      expect(result.executionRequest.session.participants).toHaveLength(1);
-      expect(result.executionRequest.session.context).toEqual({ amount: 500, isVip: false });
-      expect(result.executionRequest.session.metadata?.source).toBe('example-service');
-      expect(result.executionRequest.kickoff).toHaveLength(1);
-      expect(result.executionRequest.kickoff?.[0].messageType).toBe('Proposal');
-      expect(result.executionRequest.execution?.tags).toEqual(['example', 'fraud', 'test', 'demo']);
+      expect(result.runDescriptor.session.ttlMs).toBe(300000);
+      expect(result.runDescriptor.session.participants).toHaveLength(1);
+      expect(result.scenarioMeta.sessionContext).toEqual({ amount: 500, isVip: false });
+      expect(result.runDescriptor.session.metadata?.source).toBe('example-service');
+      expect(result.initiator?.kickoff?.messageType).toBe('Proposal');
+      expect(result.runDescriptor.execution?.tags).toEqual(['example', 'fraud', 'test', 'demo']);
       expect(result.participantBindings).toEqual([{ participantId: 'agent-1', role: 'tester', agentRef: 'agent-1' }]);
       expect(result.display.title).toBe('Test Scenario');
       expect(result.display.expectedDecisionKinds).toEqual(['approve', 'decline']);
@@ -131,7 +130,7 @@ describe('CompilerService', () => {
         scenarioRef: 'fraud/test@1.0.0',
         inputs: { amount: 100, isVip: true }
       });
-      expect(result.executionRequest.mode).toBe('sandbox');
+      expect(result.mode).toBe('sandbox');
     });
 
     it('should use specified mode', async () => {
@@ -141,7 +140,7 @@ describe('CompilerService', () => {
         inputs: { amount: 100, isVip: true },
         mode: 'live'
       });
-      expect(result.executionRequest.mode).toBe('live');
+      expect(result.mode).toBe('live');
     });
   });
 
@@ -156,7 +155,7 @@ describe('CompilerService', () => {
         inputs: { amount: 999, isVip: false }
       });
 
-      expect(result.executionRequest.session.context).toEqual({ amount: 999, isVip: false });
+      expect(result.scenarioMeta.sessionContext).toEqual({ amount: 999, isVip: false });
     });
 
     it('should use template defaults when user does not override', async () => {
@@ -169,7 +168,7 @@ describe('CompilerService', () => {
         inputs: { isVip: true }
       });
 
-      expect(result.executionRequest.session.context).toEqual({ amount: 200, isVip: true });
+      expect(result.scenarioMeta.sessionContext).toEqual({ amount: 200, isVip: true });
     });
 
     it('should use schema defaults when neither template nor user provides', async () => {
@@ -180,7 +179,7 @@ describe('CompilerService', () => {
         inputs: {}
       });
 
-      expect(result.executionRequest.session.context).toEqual({ amount: 100, isVip: true });
+      expect(result.scenarioMeta.sessionContext).toEqual({ amount: 100, isVip: true });
     });
   });
 
@@ -195,7 +194,7 @@ describe('CompilerService', () => {
         inputs: { amount: 100, isVip: true }
       });
 
-      expect(result.executionRequest.session.ttlMs).toBe(180000);
+      expect(result.runDescriptor.session.ttlMs).toBe(180000);
     });
 
     it('should apply template policyVersion and policyHints override', async () => {
@@ -228,8 +227,8 @@ describe('CompilerService', () => {
         inputs: { amount: 100, isVip: true }
       });
 
-      expect(result.executionRequest.session.policyVersion).toBe('policy.fraud.majority-veto');
-      expect(result.executionRequest.session.policyHints).toEqual({
+      expect(result.runDescriptor.session.policyVersion).toBe('policy.fraud.majority-veto');
+      expect(result.scenarioMeta.policyHints).toEqual({
         type: 'majority',
         description: 'No governance constraints',
         threshold: 0.5,
@@ -250,8 +249,8 @@ describe('CompilerService', () => {
         inputs: { amount: 100, isVip: true }
       });
 
-      expect(result.executionRequest.session.metadata?.posture).toBe('strict');
-      expect(result.executionRequest.session.metadata?.demoType).toBe('test');
+      expect(result.runDescriptor.session.metadata?.posture).toBe('strict');
+      expect(result.runDescriptor.session.metadata?.demoType).toBe('test');
     });
   });
 
@@ -308,129 +307,6 @@ describe('CompilerService', () => {
     });
   });
 
-  describe('compile - commitments', () => {
-    it('should omit session.commitments when scenario declares none', async () => {
-      mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
-
-      const result = await service.compile({
-        scenarioRef: 'fraud/test@1.0.0',
-        inputs: { amount: 100, isVip: true }
-      });
-
-      expect(result.executionRequest.session.commitments).toBeUndefined();
-    });
-
-    it('should propagate scenario commitments to session.commitments', async () => {
-      const scenarioWithCommitments: ScenarioVersionFile = {
-        ...mockScenario,
-        spec: {
-          ...mockScenario.spec,
-          launch: {
-            ...mockScenario.spec.launch,
-            commitments: [
-              {
-                id: 'fraud-risk-assessed',
-                title: 'Fraud risk assessed',
-                description: 'Fraud specialist evaluated signals.',
-                requiredRoles: ['fraud'],
-                policyRef: 'policy.default'
-              },
-              {
-                id: 'decision-finalized',
-                title: 'Decision finalized',
-                requiredRoles: ['risk']
-              }
-            ]
-          }
-        }
-      };
-      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
-
-      const result = await service.compile({
-        scenarioRef: 'fraud/test@1.0.0',
-        inputs: { amount: 100, isVip: true }
-      });
-
-      expect(result.executionRequest.session.commitments).toEqual([
-        {
-          id: 'fraud-risk-assessed',
-          title: 'Fraud risk assessed',
-          description: 'Fraud specialist evaluated signals.',
-          requiredRoles: ['fraud'],
-          policyRef: 'policy.default'
-        },
-        {
-          id: 'decision-finalized',
-          title: 'Decision finalized',
-          requiredRoles: ['risk']
-        }
-      ]);
-    });
-
-    it('should allow template overrides to replace commitments', async () => {
-      const scenarioWithCommitments: ScenarioVersionFile = {
-        ...mockScenario,
-        spec: {
-          ...mockScenario.spec,
-          launch: {
-            ...mockScenario.spec.launch,
-            commitments: [{ id: 'base-commitment', title: 'Base' }]
-          }
-        }
-      };
-      const overrideTemplate: ScenarioTemplateFile = {
-        apiVersion: 'scenarios.macp.dev/v1',
-        kind: 'ScenarioTemplate',
-        metadata: { scenarioVersion: 'fraud/test@1.0.0', slug: 'override', name: 'Override' },
-        spec: {
-          overrides: {
-            launch: {
-              commitments: [{ id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }]
-            }
-          }
-        }
-      };
-      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
-      mockIndex.getTemplate.mockResolvedValue(overrideTemplate);
-
-      const result = await service.compile({
-        scenarioRef: 'fraud/test@1.0.0',
-        templateId: 'override',
-        inputs: { amount: 100, isVip: true }
-      });
-
-      expect(result.executionRequest.session.commitments).toEqual([
-        { id: 'override-commitment', title: 'Override', requiredRoles: ['risk'] }
-      ]);
-    });
-
-    it('should substitute input placeholders inside commitments', async () => {
-      const scenarioWithCommitments: ScenarioVersionFile = {
-        ...mockScenario,
-        spec: {
-          ...mockScenario.spec,
-          launch: {
-            ...mockScenario.spec.launch,
-            commitments: [
-              {
-                id: 'review-{{ inputs.amount }}',
-                title: 'Review amount {{ inputs.amount }}'
-              }
-            ]
-          }
-        }
-      };
-      mockIndex.getScenarioVersion.mockResolvedValue(scenarioWithCommitments);
-
-      const result = await service.compile({
-        scenarioRef: 'fraud/test@1.0.0',
-        inputs: { amount: 500, isVip: true }
-      });
-
-      expect(result.executionRequest.session.commitments).toEqual([{ id: 'review-500', title: 'Review amount 500' }]);
-    });
-  });
-
   describe('compile - runDescriptor + initiator (direct-agent-auth)', () => {
     it('emits a runDescriptor stripped of scenario-specific fields', async () => {
       mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
@@ -458,7 +334,7 @@ describe('CompilerService', () => {
       expect((result.runDescriptor as unknown as Record<string, unknown>).kickoff).toBeUndefined();
     });
 
-    it('pre-allocates a shared sessionId used by executionRequest.session.metadata', async () => {
+    it('pre-allocates a shared sessionId used by runDescriptor.session', async () => {
       mockIndex.getScenarioVersion.mockResolvedValue(mockScenario);
 
       const result = await service.compile({
@@ -467,7 +343,6 @@ describe('CompilerService', () => {
       });
 
       expect(result.sessionId).toBe(result.runDescriptor.session.sessionId);
-      expect(result.executionRequest.session.metadata?.sessionId).toBe(result.sessionId);
     });
 
     it('produces an initiator payload with SessionStart + kickoff data for the initiator participant', async () => {

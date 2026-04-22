@@ -21,13 +21,11 @@ describe('Example Run (integration)', () => {
       const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       expect(result.compiled).toBeDefined();
-      expect(result.compiled.executionRequest).toBeDefined();
-      expect(result.compiled.executionRequest.mode).toBe('sandbox');
-      expect(result.compiled.executionRequest.session.modeName).toBe('macp.mode.decision.v1');
+      expect(result.compiled.runDescriptor).toBeDefined();
+      expect(result.compiled.mode).toBe('sandbox');
+      expect(result.compiled.runDescriptor.session.modeName).toBe('macp.mode.decision.v1');
       expect(result.sessionId).toBeDefined();
-      expect(result.sessionId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-      );
+      expect(result.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it('returns hosted agents with bootstrap metadata', async () => {
@@ -52,26 +50,23 @@ describe('Example Run (integration)', () => {
       const result = (await ctx.client.runExample(lendingScenarioRunRequest())) as any;
 
       expect(result.sessionId).toBeDefined();
-      expect(result.compiled.executionRequest.session.context.loanAmount).toBe(25000);
+      expect(result.compiled.scenarioMeta.sessionContext.loanAmount).toBe(25000);
     });
 
     it('runs claims scenario', async () => {
       const result = (await ctx.client.runExample(claimsScenarioRunRequest())) as any;
 
       expect(result.sessionId).toBeDefined();
-      expect(result.compiled.executionRequest.session.context.claimAmount).toBe(8500);
+      expect(result.compiled.scenarioMeta.sessionContext.claimAmount).toBe(8500);
     });
   });
 
   describe('Direct-agent-auth (ES-9)', () => {
-    it('pre-allocates a UUID v4 sessionId and threads it through executionRequest.session.metadata', async () => {
+    it('pre-allocates a UUID v4 sessionId and threads it through runDescriptor', async () => {
       const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       const sessionId = result.compiled.sessionId;
-      expect(sessionId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      );
-      expect(result.compiled.executionRequest.session.metadata.sessionId).toBe(sessionId);
+      expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
       expect(result.compiled.runDescriptor.session.sessionId).toBe(sessionId);
     });
 
@@ -91,11 +86,9 @@ describe('Example Run (integration)', () => {
       const result = (await ctx.client.runExample(fraudScenarioRunRequest())) as any;
 
       expect(result.compiled.initiator).toBeDefined();
-      expect(result.compiled.initiator.participantId).toBe(
-        result.compiled.executionRequest.session.initiatorParticipantId
-      );
+      expect(result.compiled.initiator.participantId).toBe(result.compiled.scenarioMeta.initiatorParticipantId);
       expect(result.compiled.initiator.sessionStart.participants).toEqual(
-        result.compiled.executionRequest.session.participants.map((p: any) => p.id)
+        result.compiled.runDescriptor.session.participants.map((p: any) => p.id)
       );
       expect(result.compiled.initiator.kickoff).toBeDefined();
     });
