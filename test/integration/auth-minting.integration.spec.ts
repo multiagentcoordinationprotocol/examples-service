@@ -138,10 +138,13 @@ describe('AUTH-2 JWT minting (integration)', () => {
       expect(startDenied).toHaveLength(3);
 
       // Every mint should request the scenario mode and the configured TTL.
+      // The trailing empty string in allowed_modes is load-bearing: it grants
+      // ambient-envelope (Signal/Progress) authorization at the runtime, which
+      // has no mode field. See deriveScopes() in process-example-agent-host.provider.ts.
       for (const record of authMock.records) {
         expect(record.ttl_seconds).toBe(1800);
         const scopes = record.scopes as { allowed_modes?: string[] } | undefined;
-        expect(scopes?.allowed_modes).toEqual(['macp.mode.decision.v1']);
+        expect(scopes?.allowed_modes).toEqual(['macp.mode.decision.v1', '']);
       }
 
       // E2E proof: the minted JWT actually reached bootstrap.auth_token.
