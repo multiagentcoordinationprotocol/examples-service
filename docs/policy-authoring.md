@@ -1,10 +1,18 @@
 # Policy Authoring Guide
 
-Policies define the governance rules that control how specialist agent signals (evaluations and objections) are aggregated into final decisions during MACP coordination runs. This guide explains how to create, configure, and connect policies to scenarios.
+Policies define the governance rules that control how specialist agent signals (evaluations and objections) are aggregated into final decisions during MACP coordination runs. This guide explains how the **examples-service** loads policies, how they flow to spawned agents, and how to author new ones for demo scenarios.
 
-## Policy JSON Schema
+> **Canonical rule schema, voting algorithms, veto/confidence/ABSTAIN
+> mechanics, and commitment-authority semantics live in the runtime docs
+> — not here.** See [`runtime/docs/policy.md`](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md)
+> for the full schema and behavioural reference. This guide covers only
+> the examples-service-specific plumbing (loading, registration, hints
+> mapping, scenario wiring).
 
-Every policy is a JSON file in the `policies/` directory with the following structure:
+## Policy JSON Schema (at a glance)
+
+Every policy under `policies/*.json` follows the runtime's
+`PolicyDescriptor` shape:
 
 ```json
 {
@@ -12,139 +20,20 @@ Every policy is a JSON file in the `policies/` directory with the following stru
   "mode": "macp.mode.decision.v1",
   "schema_version": 1,
   "description": "Human-readable description of this policy",
-  "rules": {
-    "voting": { ... },
-    "objection_handling": { ... },
-    "evaluation": { ... },
-    "commitment": { ... }
-  }
+  "rules": { "voting": { ... }, "objection_handling": { ... },
+             "evaluation": { ... }, "commitment": { ... } }
 }
 ```
 
-### Top-Level Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `policy_id` | string | Yes | Unique identifier. Convention: `policy.<domain>.<variant>` |
-| `mode` | string | Yes | Execution mode this policy applies to (e.g., `macp.mode.decision.v1`). Use `*` for the default policy. |
-| `schema_version` | number | Yes | Must be `>= 1`. Tracks policy schema evolution. |
-| `description` | string | Yes | Human-readable description shown in catalogs and logs. |
-
-### `rules.voting`
-
-Controls how agent evaluations are counted toward a decision.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `algorithm` | string | `"none"` | One of: `none`, `majority`, `supermajority`, `unanimous`, `weighted` |
-| `threshold` | number | `0.5` | Approval ratio required (only for `majority`/`supermajority`). Must be `> 0.5` for `supermajority`. |
-| `quorum` | object | - | Minimum participants needed: `{ "type": "count" \| "percentage", "value": number }` |
-| `weights` | object | - | Participant weight map (only for `weighted` algorithm) |
-
-### `rules.objection_handling`
-
-Controls how objections from specialist agents affect the decision.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `critical_severity_vetoes` | boolean | `false` | Whether critical-severity objections can veto the decision |
-| `veto_threshold` | number | `1` | Number of critical objections required to trigger a veto. Must be `>= 1`. |
-
-### `rules.evaluation`
-
-Controls confidence requirements for evaluations.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `minimum_confidence` | number | `0.0` | Evaluations below this confidence are disqualified from voting. Range: `0.0`-`1.0`. |
-| `required_before_voting` | boolean | `false` | Whether evaluations must be received before voting can proceed |
-
-### `rules.commitment`
-
-Controls who can commit the final decision.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `authority` | string | `"initiator_only"` | Who can commit: `initiator_only`, `designated_roles`, or `any_participant` |
-| `require_vote_quorum` | boolean | `false` | Whether vote quorum must be met before commitment |
-| `designated_roles` | string[] | `[]` | Roles with commitment authority (required when `authority` is `designated_roles`) |
-
-## Voting Algorithms
-
-### `none` (default)
-
-No structured voting. Any blocking signal (rejection or objection) triggers a decline. Used by `policy.default`.
-
-### `majority`
-
-Simple majority voting. Approves when the approval rate meets the `threshold` (default 50%).
-
-```json
-"voting": { "algorithm": "majority", "threshold": 0.5, "quorum": { "type": "count", "value": 2 } }
-```
-
-- Approval rate = approvals / effective total (excludes ABSTAIN votes)
-- If approval rate >= threshold: **approve**
-- If rejections + objections > approvals: **decline**
-- Otherwise: **step_up** (escalate for additional review)
-
-### `supermajority`
-
-Like majority but requires a higher threshold (must be > 0.5, typically 0.67).
-
-```json
-"voting": { "algorithm": "supermajority", "threshold": 0.67, "quorum": { "type": "count", "value": 3 } }
-```
-
-### `unanimous`
-
-All participants must approve. Any rejection or objection causes a decline.
-
-```json
-"voting": { "algorithm": "unanimous", "quorum": { "type": "percentage", "value": 1.0 } }
-```
-
-- All approve: **approve**
-- Any rejection or objection: **decline**
-- Mixed non-blocking signals: **step_up**
-- Disqualified evaluations (below `minimum_confidence`): **step_up**
-
-### `weighted`
-
-Participants have different vote weights. Define weights in a participant-to-weight map. Note: weighted voting is defined in the schema but is not yet implemented in the agent SDKs.
-
-## Objection Handling and Vetoes
-
-When `critical_severity_vetoes` is `true`, critical-severity objections from any agent can veto the decision regardless of voting outcome. Only objections with `severity: "critical"` count toward vetoes (per RFC-MACP-0004). High, medium, and low severity objections do not trigger vetoes.
-
-The `veto_threshold` controls how many critical objections are needed:
-
-```json
-"objection_handling": { "critical_severity_vetoes": true, "veto_threshold": 2 }
-```
-
-This requires **2** critical objections before a veto triggers — a single critical objection would not veto.
-
-## Confidence Filtering
-
-The `minimum_confidence` field filters out low-confidence evaluations. Evaluations with `confidence` below this threshold are disqualified — they don't count as approvals, rejections, or even abstentions.
-
-```json
-"evaluation": { "minimum_confidence": 0.7, "required_before_voting": true }
-```
-
-- Evaluations without an explicit `confidence` field default to `1.0` (always qualified).
-- Disqualified evaluations are tracked separately and may trigger a `step_up` in unanimous policies.
-
-## ABSTAIN Votes
-
-Evaluations with `recommendation: "ABSTAIN"` are excluded from the voting ratio denominator. This prevents abstaining participants from diluting the approval rate:
-
-- 1 approve + 1 abstain + 1 review out of 3 total → effective total = 2 → approval rate = 50%
-
-If all participants abstain, the effective total is 0 and the approval rate is 0, resulting in a `step_up`.
+For the full field reference (voting algorithms, thresholds, quorum
+shapes, objection handling, evaluation confidence, commitment authority,
+rule-level validation errors) see the canonical runtime doc linked
+above. The examples-service does not re-document or alter any of those
+semantics — it just registers whatever descriptors live on disk.
 
 ## Included Policies
+
+These are the policies shipped in `policies/` for the demo scenarios:
 
 | Policy ID | Algorithm | Threshold | Quorum | Veto | Min Confidence |
 |-----------|-----------|-----------|--------|------|----------------|
@@ -177,10 +66,14 @@ The default template uses `policy.default` which requires no registration.
 
 ### Policy Hints
 
-`policyHints` are a denormalized projection of policy rules passed to agents at bootstrap time. They include:
+`policyHints` are an examples-service-specific denormalized projection
+of the policy's rules that agents consume at bootstrap time. They are
+never sent to the runtime or the control-plane — only to the in-tree
+`PolicyStrategy` used by the Risk coordinator. The runtime evaluates
+governance against the registered `policy_id` directly.
 
-| Hint Field | Maps From |
-|------------|-----------|
+| Hint Field | Maps From (canonical) |
+|------------|-----------------------|
 | `type` | `rules.voting.algorithm` |
 | `threshold` | `rules.voting.threshold` |
 | `vetoEnabled` | `rules.objection_handling.critical_severity_vetoes` |
@@ -190,27 +83,53 @@ The default template uses `policy.default` which requires no registration.
 
 ## How Policies Are Loaded
 
-`PolicyLoaderService` reads all `*.json` files from the `policies/` directory at startup:
+`PolicyLoaderService` reads all `*.json` files from the `policies/`
+directory at startup:
 
-1. Parses each JSON file and extracts `policy_id`
-2. Validates the policy structure (non-blocking warnings for issues)
-3. Caches policies in memory for subsequent requests
-4. `policy.default` is excluded from the registrable set (auto-resolved by the runtime)
+1. Parses each file and extracts `policy_id`
+2. Validates structure (non-blocking warnings)
+3. Caches policies in memory
+4. Excludes `policy.default` from the registrable set (auto-resolved by the runtime)
 
 ## How Policies Are Registered
 
-When `REGISTER_POLICIES_ON_LAUNCH=true` (the default), the `ExampleRunService` automatically registers non-default policies with the control plane before creating a run:
+When `REGISTER_POLICIES_ON_LAUNCH=true` (the default) and
+`MACP_RUNTIME_ADDRESS` is set, `PolicyRegistrarService.onApplicationBootstrap()`
+registers every non-default policy with the **runtime** once per process
+start. Registration happens at service boot — not per-run — so that
+`/examples/run` requests never hit an `UNKNOWN_POLICY_VERSION` from the
+runtime.
 
-1. Reads `policyVersion` from the compiled `ExecutionRequest`
-2. Skips if `policy.default` or undefined
-3. Loads the policy definition from `PolicyLoaderService`
-4. POSTs to `/runtime/policies` on the control plane
-5. Treats `409 POLICY_ALREADY_EXISTS` as success (idempotent)
-6. Logs a warning on failure but proceeds with the run
+Flow (`src/policy/policy-registrar.service.ts`):
+
+1. `PolicyLoaderService.listRegistrablePolicies()` returns every policy whose
+   `policy_id` is not `policy.default`.
+2. `AuthTokenMinterService.mintToken("examples-service", { can_manage_mode_registry: true, is_observer: false, allowed_modes: ["*"] })`
+   mints an admin JWT from the auth-service.
+3. The registrar opens a short-lived gRPC channel to the runtime using that
+   JWT and calls `MacpClient.registerPolicy(descriptor)` for each policy.
+   (For the wire contract of `RegisterPolicy`, see
+   [`runtime/docs/API.md`](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#registerpolicy).)
+4. Errors whose message contains `"already"` are treated as idempotent
+   success (the runtime signals a duplicate).
+5. On completion, logs
+   `policy_registration_complete registered=<n> already=<n> failed=<n> total=<n>`.
+
+Registration is skipped (with a warning, not an error) when:
+
+- `REGISTER_POLICIES_ON_LAUNCH=false` — explicit opt-out.
+- `MACP_RUNTIME_ADDRESS` is unset — typically CI/test.
+
+If the admin JWT mint fails (e.g. auth-service unreachable), the
+registrar **aborts the entire registration pass** and logs an ERROR.
+The service still starts, but downstream `/examples/run` requests will
+fail at the runtime with `UNKNOWN_POLICY_VERSION`. See
+"Troubleshooting" below.
 
 ## Creating a Custom Policy
 
-1. **Create the JSON file** in `policies/`:
+1. **Create the JSON file** in `policies/` — the shape is the runtime's
+   `PolicyDescriptor`. Example:
 
 ```json
 {
@@ -224,14 +143,8 @@ When `REGISTER_POLICIES_ON_LAUNCH=true` (the default), the `ExampleRunService` a
       "threshold": 0.75,
       "quorum": { "type": "count", "value": 3 }
     },
-    "objection_handling": {
-      "critical_severity_vetoes": true,
-      "veto_threshold": 1
-    },
-    "evaluation": {
-      "minimum_confidence": 0.6,
-      "required_before_voting": true
-    },
+    "objection_handling": { "critical_severity_vetoes": true, "veto_threshold": 1 },
+    "evaluation": { "minimum_confidence": 0.6, "required_before_voting": true },
     "commitment": {
       "authority": "designated_roles",
       "require_vote_quorum": true,
@@ -241,7 +154,10 @@ When `REGISTER_POLICIES_ON_LAUNCH=true` (the default), the `ExampleRunService` a
 }
 ```
 
-2. **Reference it in a scenario template**:
+Refer to [`runtime/docs/policy.md`](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md)
+for the legal values of each rule field.
+
+2. **Reference it in a scenario template:**
 
 ```yaml
 spec:
@@ -257,18 +173,52 @@ spec:
         designatedRoles: ["risk", "compliance"]
 ```
 
-3. **Restart the service** — `PolicyLoaderService` will discover the new file on next load.
+3. **Restart the service** — `PolicyLoaderService` will discover the new
+   file on next load, and `PolicyRegistrarService` will register it with
+   the runtime during `onApplicationBootstrap`.
 
-## Validation Rules
+## Troubleshooting
 
-`PolicyLoaderService` validates policies on load and reports warnings for:
+### `UNKNOWN_POLICY_VERSION` at run time
 
-- Missing `policy_id`
-- `schema_version` less than 1
-- `supermajority` algorithm with `threshold <= 0.5`
-- `weighted` algorithm without a `weights` map
-- `veto_threshold` less than 1
-- `minimum_confidence` outside the `0.0`-`1.0` range
-- `designated_roles` authority without any roles defined
+Symptom: `/examples/run` compiles successfully but the runtime rejects
+the session with `UNKNOWN_POLICY_VERSION`.
 
-Validation warnings are non-blocking — the policy still loads but warnings are logged.
+Checklist:
+
+1. **Startup logs.** Look for `policy_registration_complete` on the most
+   recent examples-service boot. If you see
+   `policy registration aborted: failed to mint admin JWT`, fix the
+   auth-service connection (`MACP_AUTH_SERVICE_URL`, network reachability,
+   JWKS on the runtime).
+2. **Scope.** The admin mint uses `can_manage_mode_registry`. If the
+   runtime's auth config does not accept this scope, `registerPolicy`
+   returns an error and the policy stays unregistered.
+3. **Runtime trust chain.** The runtime must have
+   `MACP_AUTH_JWKS_URL=<auth-service>/.well-known/jwks.json` and the
+   matching `MACP_AUTH_ISSUER` / `MACP_AUTH_AUDIENCE`. A mismatch rejects
+   the admin JWT at the runtime boundary, which logs as
+   `policy_register_exception`. See
+   [`runtime/docs/getting-started.md` § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/getting-started.md#authentication)
+   for the full JWT setup.
+4. **Manual re-register.** Restart the examples-service once the
+   auth-service is healthy — registration is idempotent, so any
+   already-registered policies come back as `already` in the log summary.
+
+### `AUTH_MINT_FAILED` on `/examples/run`
+
+The spawn-time JWT mint hit the auth-service and got a non-2xx response
+(or timed out). Check `MACP_AUTH_SERVICE_URL`, `MACP_AUTH_SERVICE_TIMEOUT_MS`,
+and the auth-service logs.
+
+## Local validation warnings
+
+`PolicyLoaderService` runs a light structural check on load and warns
+(non-blocking) for missing `policy_id`, out-of-range values, or
+obviously invalid combinations. The **authoritative** schema validation
+happens at the runtime during `RegisterPolicy` — if a descriptor passes
+local load but fails at the runtime, the registrar logs
+`policy_register_exception` with the runtime's `INVALID_POLICY_DEFINITION`
+reason. See
+[`runtime/docs/policy.md` § Registering a policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md#registering-a-policy)
+for the validation rules the runtime enforces.

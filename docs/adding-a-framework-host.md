@@ -2,6 +2,14 @@
 
 This guide explains how to add support for a new agent framework (e.g., AutoGen, Semantic Kernel, OpenAI Agents SDK).
 
+> Worker-side details — the `Participant` lifecycle, `ctx.actions` API,
+> handler dispatch, and `fromBootstrap()` semantics — are canonically
+> documented in the SDK guides
+> ([Python](https://github.com/multiagentcoordinationprotocol/python-sdk/blob/main/docs/guides/agent-framework.md),
+> [TypeScript](https://github.com/multiagentcoordinationprotocol/typescript-sdk/blob/main/docs/guides/agent-framework.md)).
+> This guide only covers the examples-service wiring (adapter, catalog
+> entry, manifest, tests).
+
 ## Step 1: Create a Host Adapter
 
 Create `src/hosting/adapters/<framework>-host-adapter.ts`:
@@ -120,11 +128,36 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-The upstream `Participant` drives the gRPC event stream, dispatches canonical
-messages to handlers, and fires `onTerminal` when the session reaches a
-terminal state. Each handler receives `(message, ctx)` — `message` carries
-the canonical envelope fields, `ctx.actions` exposes `evaluate / vote /
-commit / objection` against the agent's own authenticated runtime channel.
+See the SDK agent-framework guides linked at the top of this doc for the
+full `Participant` / `ctx.actions` surface. The examples-service itself
+does not own that contract.
+
+### Emitting ambient Signal / Progress envelopes (optional)
+
+For diagnostics or session-level metadata, a worker can emit ambient
+envelopes (`mode=""`, `session_id=""`). The JWT minted for every spawn
+includes `""` in `allowed_modes` for this purpose — see
+`docs/direct-agent-auth.md` § "Ambient envelopes". Example (Python, matching
+`agents/langchain_worker/main.py`):
+
+```python
+from macp_sdk.envelopes import build_envelope, build_signal_payload
+
+payload = build_signal_payload(
+    signal_type="worker.heartbeat",
+    data=b"{}",
+    confidence=1.0,
+    correlation_session_id=participant.session_id,
+)
+envelope = build_envelope(
+    mode="",
+    message_type="Signal",
+    session_id="",
+    sender=participant.participant_id,
+    payload=payload,
+)
+participant.client.send(envelope, auth=participant.auth)
+```
 
 ## Step 5: Create a Manifest
 

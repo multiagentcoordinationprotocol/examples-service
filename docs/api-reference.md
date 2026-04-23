@@ -337,7 +337,12 @@ Full showcase flow: compile scenario, bootstrap example agents, and optionally s
 
 When `submitToControlPlane` is `true` and the control plane is available, the response includes `runId`, `status`, and `traceId` in the `controlPlane` object, and hosted agents have `status: "bootstrapped"`.
 
-**Errors:** `400 VALIDATION_ERROR | INVALID_SCENARIO_REF | AGENT_NOT_FOUND`, `502 CONTROL_PLANE_UNAVAILABLE`
+**Errors:** `400 VALIDATION_ERROR | INVALID_SCENARIO_REF | AGENT_NOT_FOUND`, `502 AUTH_MINT_FAILED | CONTROL_PLANE_UNAVAILABLE`, `500 INVALID_CONFIG`
+
+`AUTH_MINT_FAILED` surfaces when the per-agent JWT mint against the
+auth-service fails (non-2xx response or timeout). `INVALID_CONFIG` surfaces
+if `MACP_AUTH_SERVICE_URL` is not set at boot — the service fails startup,
+so this should only be seen in misconfigured environments.
 
 ## Swagger UI
 
