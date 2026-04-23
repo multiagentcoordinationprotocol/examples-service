@@ -1,4 +1,4 @@
-name: Notify Website of Doc Changes
+name: Notify Console of Doc Changes
 
 on:
   push:
@@ -11,9 +11,9 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger website sync
+      - name: Trigger ui-console docs sync
         uses: peter-evans/repository-dispatch@v4
         with:
-          token: ${{ secrets.WEBSITE_SYNC_TOKEN }}
-          repository: multiagentcoordinationprotocol/website
+          token: ${{ secrets.CONSOLE_SYNC_TOKEN }}
+          repository: multiagentcoordinationprotocol/ui-console
           event-type: docs-updated
