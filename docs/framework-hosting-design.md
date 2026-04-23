@@ -7,6 +7,12 @@ The MACP Example Showcase Service uses a **framework-neutral hosting architectur
 ## Architecture
 
 ```
+Service bootstrap (once per process):
+  → PolicyRegistrarService.onApplicationBootstrap()
+     → AuthTokenMinterService.mintToken("examples-service", {can_manage_mode_registry})
+     → MacpClient.registerPolicy(...) for each non-default policy
+
+Per-run:
 POST /examples/run
   → CompilerService.compile()              [framework-agnostic]
   → applyRequestOverrides(tags/requester)  [merge UI-provided fields]
@@ -15,6 +21,7 @@ POST /examples/run
     → ProcessExampleAgentHostProvider
       → HostAdapterRegistry.get(framework)
       → ManifestValidator.validate(manifest)
+      → AuthTokenMinterService.mintToken(sender, deriveScopes(...))
       → AgentHostAdapter.prepareLaunch()
       → LaunchSupervisor.writeBootstrapFile(BootstrapPayload) → /tmp/*.json
       → LaunchSupervisor.launch()          [spawns process with MACP_BOOTSTRAP_FILE env]
@@ -23,7 +30,9 @@ POST /examples/run
 With direct-agent-auth (RFC-MACP-0004 §4), the examples-service is no longer
 in the envelope path. Each spawned agent opens its own authenticated gRPC
 channel to the runtime using `bootstrap.auth_token`; the control-plane stays
-in observer-only mode (read-only projection + SSE).
+in observer-only mode (read-only projection + SSE). Policies must be
+registered with the runtime *before* the first run — that's why the
+registrar runs at `onApplicationBootstrap` rather than per-request.
 
 ## Key Boundaries
 
@@ -57,7 +66,12 @@ gRPC — the control-plane never writes on an agent's behalf.
 
 Every worker receives a flat `BootstrapPayload` via a temp JSON file
 (`MACP_BOOTSTRAP_FILE`). Shape matches what both `macp_sdk` (Python) and
-`macp-sdk-typescript` expect in their `fromBootstrap()` functions:
+`macp-sdk-typescript` expect in their `fromBootstrap()` functions. For
+the authoritative reference of the shape and its fields, see the SDK
+agent-framework guides linked below and
+[`docs/worker-bootstrap-contract.md`](worker-bootstrap-contract.md). The
+example below shows the examples-service additions
+(`metadata.policy_hints`, `metadata.session_context`, etc.):
 
 ```json
 {
@@ -108,8 +122,10 @@ emits `SessionStart` + the first mode-specific envelope (e.g. `Proposal`).
 | Agent Profile Service | `src/catalog/agent-profile.service.ts` | Builds agent profiles with registry-scanned scenario coverage |
 | Agent Catalog | `src/example-agents/example-agent-catalog.service.ts` | Hard-coded agent definitions (4 agents) |
 | Python Agent SDK | upstream `macp_sdk` (PyPI) | Python workers call `macp_sdk.agent.from_bootstrap()` directly — no local worker SDK in this repo. Handlers receive the same `ctx.actions` surface (`evaluate`, `vote`, `commit`, etc.) as the TS SDK. |
-| Node Worker Runtime | `src/example-agents/runtime/` | In-tree TS modules for the custom (Node) Risk Agent: `bootstrap-loader.ts`, `cancel-callback-server.ts` (RFC-0001 §7.2 Option A), `policy-strategy.ts`, and `risk-decider.worker.ts`. Runtime IO uses `macp-sdk-typescript` directly. |
+| Node Worker Runtime | `src/example-agents/runtime/` | In-tree TS modules for the custom (Node) Risk Agent: `bootstrap-loader.ts`, `log-agent.ts`, `policy-strategy.ts`, and `risk-decider.worker.ts`. Runtime IO uses `macp-sdk-typescript` directly. Cancel-callback delivery is owned by the SDK (`fromBootstrap()` auto-binds the listener). |
 | Policy Strategy | `src/example-agents/runtime/policy-strategy.ts` | Policy-aware decision logic for the coordinator (quorum, voting, veto, confidence filtering, designated-role commitment authority) |
+| Policy Registrar | `src/policy/policy-registrar.service.ts` | Mints an admin JWT (`can_manage_mode_registry`) at service bootstrap and registers every non-default policy with the runtime via `MacpClient.registerPolicy()`. |
+| Auth Minter | `src/auth/auth-token-minter.service.ts` | On-demand JWT minting against the standalone auth-service (`POST /tokens`). Single-flight cache keyed by `(sender, scope-hash)`. See `docs/direct-agent-auth.md`. |
 
 ## Framework Workers
 
@@ -127,23 +143,21 @@ Each worker gracefully falls back when its framework library is not installed, p
 All workers — Python and Node — share the same conceptual `Participant`
 surface, provided by the respective upstream SDK:
 
-| Language | Entry point | Source |
-|----------|-------------|--------|
-| Python   | `macp_sdk.agent.from_bootstrap()` | PyPI `macp-sdk` |
-| Node     | `agent.fromBootstrap()` from `macp-sdk-typescript` | GH packages `macp-sdk-typescript` |
+| Language | Entry point | Canonical docs |
+|----------|-------------|----------------|
+| Python   | `macp_sdk.agent.from_bootstrap()` | [`python-sdk/docs/guides/agent-framework.md`](https://github.com/multiagentcoordinationprotocol/python-sdk/blob/main/docs/guides/agent-framework.md) |
+| Node     | `agent.fromBootstrap()` from `macp-sdk-typescript` | [`typescript-sdk/docs/guides/agent-framework.md`](https://github.com/multiagentcoordinationprotocol/typescript-sdk/blob/main/docs/guides/agent-framework.md) |
 
-Both implementations give the worker:
-- **Handler registration** — `participant.on('Proposal', handler)`,
-  `participant.on('Evaluation', handler)`, etc.
-- **Actions context** — `ctx.actions.evaluate()`, `ctx.actions.objection()`,
-  `ctx.actions.vote()`, `ctx.actions.commit()`. Envelopes travel over the
-  agent's own authenticated gRPC channel (RFC-MACP-0004 §4).
-- **gRPC-driven event loop** — `participant.run()` subscribes to the runtime's
-  session stream and dispatches to registered handlers.
-- **Terminal notification** — `participant.onTerminal()` fires when the
-  session reaches a terminal state (committed / cancelled / deadline).
+Those guides own the handler-registration API, the `ctx.actions` surface
+per mode, the gRPC event loop, cancel-callback auto-binding, strategies,
+and terminal-notification semantics. The examples-service **does not
+redocument** any of that — if you're wiring a new worker, read the SDK
+docs first.
 
-The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicyStrategy(policyHints)`) for policy-driven:
+The risk-agent coordinator is the one place the examples-service adds
+its own logic on top of the SDK Participant: it uses a local
+**PolicyStrategy** (`createPolicyStrategy(policyHints)`) for
+policy-driven:
 - **Quorum**: `unanimous` waits for all; `majority`/`supermajority` needs threshold; `none` needs ≥1 response
 - **Voting**: Approval rate vs threshold, with veto-blocking objections when `vetoEnabled` (configurable `vetoThreshold` per RFC-MACP-0012)
 - **Confidence filtering**: Evaluations below `minimumConfidence` are disqualified from voting
@@ -153,11 +167,22 @@ The risk-agent coordinator additionally uses **PolicyStrategy** (`createPolicySt
 ## Policy Flow
 
 ```
-scenario.yaml (policyVersion + policyHints)
-  → template override (optional)
-  → CompilerService → scenarioSpec.session.policyHints (internal scenario bookkeeping)
-  → BootstrapPayload.execution.policyHints (threaded into every agent bootstrap)
-  → Worker reads policyHints → PolicyStrategy.decide()
+Startup (once per examples-service process):
+  policies/*.json → PolicyLoaderService
+    → PolicyRegistrarService.onApplicationBootstrap()
+    → MacpClient.registerPolicy() for each non-default policy (runtime gRPC)
+
+Per-run:
+  scenario.yaml (policyVersion + policyHints)
+    → template override (optional)
+    → CompilerService → scenarioSpec.session.policyHints (internal bookkeeping)
+    → BootstrapPayload.metadata.policy_hints (threaded into every agent bootstrap)
+    → Worker reads policy_hints → PolicyStrategy.decide()
 ```
 
-Note: `policyHints` do NOT travel to the control-plane. They live entirely in the scenario layer (examples-service) and are consumed by agent workers via their bootstrap file. The control-plane's `RunDescriptor` contract is scenario-agnostic — see `direct-agent-auth.md` for the full flow.
+Note: `policyHints` do NOT travel to the control-plane. They live entirely
+in the scenario layer (examples-service) and are consumed by agent workers
+via their bootstrap file. Only `policy_version` (the id) is looked up by the
+runtime against the registrations performed at startup — that lookup is why
+registration must complete before the first run. See `direct-agent-auth.md`
+for the full flow and `policy-authoring.md` for the JSON schema.

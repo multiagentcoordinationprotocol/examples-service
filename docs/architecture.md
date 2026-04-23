@@ -1,5 +1,13 @@
 # Architecture
 
+> This page covers only the examples-service internals (catalog, compiler,
+> hosting). For the MACP runtime's own architecture — layer structure,
+> request flow, durability model, and mode/policy registries — see the
+> canonical doc:
+> [`runtime/docs/architecture.md`](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md).
+> For protocol-level concepts (sessions, modes, two-plane model) see the
+> [protocol docs](https://www.multiagentcoordinationprotocol.io/docs).
+
 ## Overview
 
 The MACP Example Showcase Service is a single NestJS service that intentionally combines three responsibilities for demo simplicity:
@@ -26,24 +34,27 @@ In a production deployment, these three things are separate:
 
 ```
 src/
+  auth/              → AuthTokenMinterService (AUTH-2 JWT minting against auth-service)
   catalog/           → Pack/scenario listing + AgentProfileService (scenario coverage computation)
   compiler/          → Input validation (AJV) + template substitution + RunDescriptor + scenarioSpec assembly
-  config/            → Environment-based configuration (global module; runtime gRPC address, TLS, per-agent tokens)
+  config/            → Environment-based configuration (global module; runtime gRPC address, TLS, auth-service URL)
   contracts/         → TypeScript interfaces — registry types, launch types, agent types
   controllers/       → REST endpoints (health, catalog, launch, examples, agents)
   dto/               → Swagger-annotated request/response DTOs
   errors/            → AppException, ErrorCode enum, GlobalExceptionFilter
   example-agents/    → Hard-coded example agent catalog (fraud, growth, compliance, risk)
     runtime/         → In-tree Node worker runtime for the custom Risk Agent:
-                         bootstrap-loader, cancel-callback-server, policy-strategy,
-                         risk-decider.worker (uses macp-sdk-typescript directly)
+                         bootstrap-loader, log-agent, policy-strategy,
+                         risk-decider.worker (uses macp-sdk-typescript directly;
+                         the SDK auto-binds the cancel-callback listener)
   hosting/           → Two-phase agent hosting (resolve + attach) + pluggable host providers
     adapters/        → Framework adapters (langgraph, langchain, crewai, custom)
                          + agent-env for convenience env vars
     contracts/       → AgentManifest, BootstrapPayload, AgentHostAdapter types
   launch/            → Launch schema generation + ExampleRunService (full showcase flow)
   middleware/        → Correlation ID + request logging + API key guard
-  policy/            → PolicyLoaderService (reads policies/ JSON files)
+  policy/            → PolicyLoaderService (reads policies/*.json) +
+                         PolicyRegistrarService (registers policies with runtime at bootstrap)
   observability/     → Observer-invariant tests (prevents any HTTP write to deleted CP routes)
   registry/          → File-backed YAML loader + in-memory cache index
 ```
@@ -52,6 +63,11 @@ Note: `src/control-plane/` was removed during the direct-agent-auth rollout
 (April 2026). The examples-service no longer has a runtime dependency on the
 control-plane's HTTP API — runs are initiated by spawning agents that connect
 directly to the MACP runtime over gRPC.
+
+Startup-time dependencies (both required to accept `/examples/run`):
+
+- **auth-service** — every spawn mints a JWT via `POST /tokens`. Missing `MACP_AUTH_SERVICE_URL` fails startup with `INVALID_CONFIG`. See `docs/direct-agent-auth.md` § "AUTH-2".
+- **MACP runtime** — `PolicyRegistrarService.onApplicationBootstrap()` mints an admin JWT and calls `MacpClient.registerPolicy()` for each non-default policy. When `MACP_RUNTIME_ADDRESS` is unset the registrar logs a warning and skips; when the mint fails it aborts with an ERROR and downstream runs fail `UNKNOWN_POLICY_VERSION`. See `docs/policy-authoring.md` § "Troubleshooting".
 
 ## Request Flow
 
