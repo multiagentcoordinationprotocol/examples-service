@@ -132,7 +132,7 @@ export class CompilerService {
         ttlMs: launch.ttlMs,
         participants: participantIds.map((id) => ({ id })),
         metadata: {
-          source: 'example-service',
+          source: 'macp-playground',
           sourceRef: request.scenarioRef,
           scenarioRef: request.scenarioRef,
           templateId: request.templateId ?? 'default',
@@ -144,7 +144,7 @@ export class CompilerService {
         idempotencyKey: execution.idempotencyKey,
         tags,
         requester: {
-          actorId: execution.requester?.actorId ?? 'example-service',
+          actorId: execution.requester?.actorId ?? 'macp-playground',
           actorType: execution.requester?.actorType ?? 'service'
         }
       }

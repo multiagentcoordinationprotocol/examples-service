@@ -6,7 +6,7 @@ import { AuthTokenMinterService } from '../auth/auth-token-minter.service';
 import { PolicyLoaderService } from './policy-loader.service';
 import type { PolicyDefinition } from '../contracts/policy';
 
-const REGISTRAR_SENDER = 'examples-service';
+const REGISTRAR_SENDER = 'macp-playground';
 
 @Injectable()
 export class PolicyRegistrarService implements OnApplicationBootstrap {

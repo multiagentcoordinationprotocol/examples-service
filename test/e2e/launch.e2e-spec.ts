@@ -116,7 +116,7 @@ describe('Launch (e2e)', () => {
           expect(res.body.runDescriptor.session.participants).toHaveLength(4);
           expect(res.body.scenarioMeta.sessionContext.transactionAmount).toBe(3200);
           expect(res.body.scenarioMeta.sessionContext.isVipCustomer).toBe(true);
-          expect(res.body.runDescriptor.session.metadata.source).toBe('example-service');
+          expect(res.body.runDescriptor.session.metadata.source).toBe('macp-playground');
           expect(res.body.initiator.kickoff.messageType).toBe('Proposal');
           expect(res.body.participantBindings).toHaveLength(4);
           expect(res.body.display.title).toBe('High Value Purchase From New Device');

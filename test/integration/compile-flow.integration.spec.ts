@@ -28,7 +28,7 @@ describe('Compile Flow (integration)', () => {
       expect(body.runDescriptor.session.participants).toHaveLength(4);
       expect(body.scenarioMeta.sessionContext.transactionAmount).toBe(3200);
       expect(body.scenarioMeta.sessionContext.isVipCustomer).toBe(true);
-      expect(body.runDescriptor.session.metadata.source).toBe('example-service');
+      expect(body.runDescriptor.session.metadata.source).toBe('macp-playground');
       expect(body.initiator.kickoff.messageType).toBe('Proposal');
     });
 

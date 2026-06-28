@@ -225,9 +225,9 @@ pre-allocated `sessionId` (UUID v4).
       "policyVersion": "policy.default",
       "ttlMs": 300000,
       "participants": [{ "id": "fraud-agent" }, { "id": "risk-agent" }],
-      "metadata": { "source": "example-service", "scenarioRef": "fraud/high-value-new-device@1.0.0" }
+      "metadata": { "source": "macp-playground", "scenarioRef": "fraud/high-value-new-device@1.0.0" }
     },
-    "execution": { "tags": ["example","fraud"], "requester": { "actorId": "example-service", "actorType": "service" } }
+    "execution": { "tags": ["example","fraud"], "requester": { "actorId": "macp-playground", "actorType": "service" } }
   },
   "initiator": {
     "participantId": "risk-agent",

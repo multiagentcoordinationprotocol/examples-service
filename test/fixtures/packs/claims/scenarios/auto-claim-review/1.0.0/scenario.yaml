@@ -114,7 +114,7 @@ spec:
   execution:
     tags: [demo, claims, mixed-framework, examples]
     requester:
-      actorId: example-service
+      actorId: macp-playground
       actorType: service
 
   outputs:

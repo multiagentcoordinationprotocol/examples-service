@@ -61,7 +61,7 @@ function buildService(overrides: {
       overrides.mint ??
       jest.fn().mockResolvedValue({
         token: 'jwt-admin',
-        sender: 'examples-service',
+        sender: 'macp-playground',
         expiresAt: Date.now() + 3_600_000,
         expiresInSeconds: 3600,
         cacheOutcome: 'miss'
@@ -105,11 +105,11 @@ describe('PolicyRegistrarService', () => {
     expect(registerPolicyMock).not.toHaveBeenCalled();
   });
 
-  it('mints with management scope for the examples-service sender', async () => {
+  it('mints with management scope for the macp-playground sender', async () => {
     const { service, minter } = buildService();
     registerPolicyMock.mockResolvedValue({ ok: true });
     await service.onApplicationBootstrap();
-    expect(minter.mintToken).toHaveBeenCalledWith('examples-service', {
+    expect(minter.mintToken).toHaveBeenCalledWith('macp-playground', {
       can_manage_mode_registry: true,
       is_observer: false,
       allowed_modes: ['*']
@@ -124,7 +124,7 @@ describe('PolicyRegistrarService', () => {
       address: 'runtime:50051',
       secure: false,
       allowInsecure: true,
-      auth: { bearerToken: 'jwt-admin', expectedSender: 'examples-service' }
+      auth: { bearerToken: 'jwt-admin', expectedSender: 'macp-playground' }
     });
   });
 
