@@ -25,7 +25,7 @@ describe('Scenario authoring (integration)', () => {
       // inlined values in runDescriptor.session.metadata.
       const result = (await ctx.client.compile(fraudScenarioCompileRequest())) as any;
       const metadata = result.runDescriptor.session.metadata;
-      expect(metadata.source).toBe('example-service');
+      expect(metadata.source).toBe('macp-playground');
       expect(metadata.scenarioRef).toBe('fraud/high-value-new-device@1.0.0');
     });
 

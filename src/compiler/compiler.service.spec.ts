@@ -58,7 +58,7 @@ const mockScenario: ScenarioVersionFile = {
     execution: {
       tags: ['example'],
       requester: {
-        actorId: 'example-service',
+        actorId: 'macp-playground',
         actorType: 'service'
       }
     },
@@ -116,7 +116,7 @@ describe('CompilerService', () => {
       expect(result.runDescriptor.session.ttlMs).toBe(300000);
       expect(result.runDescriptor.session.participants).toHaveLength(1);
       expect(result.scenarioMeta.sessionContext).toEqual({ amount: 500, isVip: false });
-      expect(result.runDescriptor.session.metadata?.source).toBe('example-service');
+      expect(result.runDescriptor.session.metadata?.source).toBe('macp-playground');
       expect(result.initiator?.kickoff?.messageType).toBe('Proposal');
       expect(result.runDescriptor.execution?.tags).toEqual(['example', 'fraud', 'test', 'demo']);
       expect(result.participantBindings).toEqual([{ participantId: 'agent-1', role: 'tester', agentRef: 'agent-1' }]);
@@ -324,7 +324,7 @@ describe('CompilerService', () => {
       expect(result.runDescriptor.session.policyVersion).toBe('policy.default');
       expect(result.runDescriptor.session.participants).toEqual([{ id: 'agent-1' }]);
       expect(result.runDescriptor.session.ttlMs).toBe(300000);
-      expect(result.runDescriptor.execution?.requester?.actorId).toBe('example-service');
+      expect(result.runDescriptor.execution?.requester?.actorId).toBe('macp-playground');
 
       // Scenario-specific fields must NOT appear on the generic descriptor.
       const sessionRecord = result.runDescriptor.session as unknown as Record<string, unknown>;
