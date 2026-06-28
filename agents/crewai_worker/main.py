@@ -105,9 +105,54 @@ def _load_session_context() -> dict:
     return (data.get("metadata") or {}).get("session_context") or {}
 
 
+def _load_participants() -> tuple[list[str], str]:
+    """Return (participants, own_participant_id) from the bootstrap file."""
+    path = os.environ.get("MACP_BOOTSTRAP_FILE", "")
+    if not path:
+        return [], ""
+    with open(path) as f:
+        data = json.load(f)
+    parts = [str(p) for p in (data.get("participants") or [])]
+    return parts, str(data.get("participant_id") or "")
+
+
 def main() -> int:
     participant = from_bootstrap()
     session_context = _load_session_context()
+    participants, self_id = _load_participants()
+
+    # Two-phase deliberation barrier (RFC-MACP-0007): emit our Evaluation on the
+    # Proposal, then defer our Vote until every peer specialist has evaluated, so
+    # all Evaluations land before the first Vote advances the runtime to the
+    # Voting phase (after which late Evaluations are rejected as InvalidPayload).
+    # Peers = declared participants minus self and the coordinator (the Proposal
+    # sender, who does not emit an Evaluation).
+    state: dict = {"pending": None, "peers": set(), "seen": set(), "voted": False}
+
+    def _maybe_vote(ctx) -> None:
+        pending = state["pending"]
+        if state["voted"] or pending is None:
+            return
+        if not state["peers"].issubset(state["seen"]):
+            return  # still waiting for peer evaluations
+        state["voted"] = True
+        vote = pending["vote"]
+        emit_progress(ctx.actions, 0.75, f"voting {vote}")
+        try:
+            ctx.actions.vote(pending["proposal_id"], vote, reason=pending["reason"])
+            logger.info("compliance response sent proposalId=%s vote=%s recommendation=%s", pending["proposal_id"], vote, pending["recommendation"])
+        except MacpAckError as err:
+            if _is_session_closed(err):
+                logger.info("compliance vote skipped — session already closed proposalId=%s err=%s", pending["proposal_id"], err)
+            else:
+                raise
+        emit_progress(ctx.actions, 1.0, "complete")
+        emit_signal(
+            ctx.actions,
+            "session.ended",
+            {"vote": vote, "recommendation": pending["recommendation"], "participantId": "compliance-agent"},
+        )
+        participant.stop()
 
     def handle_proposal(message, ctx):
         emit_signal(
@@ -217,27 +262,25 @@ def main() -> int:
         else:
             vote = "APPROVE" if recommendation in ("APPROVE", "ALLOW", "REVIEW") else "REJECT"
 
-        emit_progress(ctx.actions, 0.75, f"voting {vote}")
+        # Stage the vote; the barrier releases it once peers have evaluated.
+        coordinator = message.sender or ""
+        state["peers"] = {p for p in participants if p not in (self_id, coordinator)}
+        state["pending"] = {
+            "proposal_id": proposal_id,
+            "vote": vote,
+            "reason": reason,
+            "recommendation": recommendation,
+        }
+        _maybe_vote(ctx)  # vote immediately if peers already evaluated (or none)
 
-        try:
-            ctx.actions.vote(proposal_id, vote, reason=reason)
-            logger.info("compliance response sent proposalId=%s vote=%s recommendation=%s", proposal_id, vote, recommendation)
-        except MacpAckError as err:
-            if _is_session_closed(err):
-                logger.info("compliance vote skipped — session already closed proposalId=%s err=%s", proposal_id, err)
-            else:
-                raise
-
-        emit_progress(ctx.actions, 1.0, "complete")
-        emit_signal(
-            ctx.actions,
-            "session.ended",
-            {"vote": vote, "recommendation": recommendation, "participantId": "compliance-agent"},
-        )
-
-        participant.stop()
+    def handle_evaluation(message, ctx):
+        # Barrier: record each peer's evaluation; vote once all peers are in.
+        if message.sender and message.sender != self_id:
+            state["seen"].add(message.sender)
+        _maybe_vote(ctx)
 
     participant.on("Proposal", handle_proposal)
+    participant.on("Evaluation", handle_evaluation)
     participant.run()
     return 0
 
